@@ -1,0 +1,9 @@
+web/config.js
+__pycache__/
+*.pyc
+.env
+.venv/
+*.xlsm
+*.xlsx
+!import/fixtures/*.xlsx
+.DS_Store

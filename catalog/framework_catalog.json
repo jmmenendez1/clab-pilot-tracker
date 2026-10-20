@@ -1,0 +1,298 @@
+{
+  "catalog_version": "1.0.0",
+  "framework_version": "v1.3.3 (2026-05-20)",
+  "notes": "Parity with clab_data_collection_template v1. Process-based L3 variant deferred to a later catalog version. The UI is generated from this file: adding, removing or re-staging a dimension requires no code change.",
+
+  "pilot_types": [
+    { "key": "urban",         "label": "Urban intervention",     "attribution": "counterfactual" },
+    { "key": "digital",       "label": "Digital project",        "attribution": "counterfactual" },
+    { "key": "behavioral",    "label": "Behavioral intervention","attribution": "counterfactual" },
+    { "key": "institutional", "label": "Institutional instrument","attribution": "counterfactual" },
+    { "key": "methodology",   "label": "Innovation methodology", "attribution": "process" }
+  ],
+
+  "attribution_categories": [
+    { "key": "counterfactual", "label": "Counterfactual-based" },
+    { "key": "process",        "label": "Process-based" }
+  ],
+
+  "pilot_modes": [
+    { "key": "prospective",   "label": "Prospective (live pilot, stage by stage)" },
+    { "key": "retrospective", "label": "Retrospective (past pilot, all stages open)" }
+  ],
+
+  "pilot_fields": [
+    { "key": "name",               "label": "Pilot name",           "type": "text",     "required": true },
+    { "key": "tc_code",            "label": "TC code",              "type": "text",     "required": true,  "pattern": "^[A-Z]{2}-T[0-9]{4}$", "help": "Format AZ-T####, e.g. RG-T4182" },
+    { "key": "city",               "label": "City",                 "type": "text",     "required": true },
+    { "key": "country",            "label": "Country",              "type": "text",     "required": true },
+    { "key": "pilot_type",         "label": "Pilot type",           "type": "enum",     "required": true,  "options_from": "pilot_types" },
+    { "key": "attribution_category","label": "Attribution category","type": "enum",     "required": true,  "options_from": "attribution_categories", "derived_from": "pilot_type", "help": "Pre-filled from pilot type; override only with a reason." },
+    { "key": "mode",               "label": "Mode",                 "type": "enum",     "required": true,  "options_from": "pilot_modes" },
+    { "key": "problem_definition", "label": "Problem definition",   "type": "longtext", "required": true },
+    { "key": "target_population",  "label": "Target population",    "type": "longtext", "required": true },
+    { "key": "lead",               "label": "Lead / responsible",   "type": "text",     "required": true },
+    { "key": "counterpart",        "label": "Local counterpart / implementer", "type": "text", "required": false },
+    { "key": "date_started",       "label": "Date started",         "type": "date",     "required": false },
+    { "key": "date_ended",         "label": "Date ended",           "type": "date",     "required": false }
+  ],
+
+  "field_statuses": [
+    { "key": "filled",         "label": "Filled" },
+    { "key": "no_evidence",    "label": "No evidence available", "requires_note": true },
+    { "key": "not_applicable", "label": "Not applicable",        "requires_note": true }
+  ],
+
+  "degree_scale": [
+    { "key": "high",   "label": "High" },
+    { "key": "medium", "label": "Medium" },
+    { "key": "low",    "label": "Low" },
+    { "key": "na",     "label": "NA", "requires_note": true }
+  ],
+
+  "stages": [
+    { "key": "ideation",       "order": 1, "label": "Ideation",
+      "instructions": "Plan the impact evaluation: state hypotheses, sketch the counterfactual and identify available data sources. Fill what is knowable now; leave the rest blank." },
+    { "key": "design",         "order": 2, "label": "Design",
+      "instructions": "Complete Level 1 (Design & Relevance), confirm the counterfactuals still hold, record baselines for Level 3 and document lessons learned during ideation and design." },
+    { "key": "implementation", "order": 3, "label": "Implementation",
+      "instructions": "Capture Level 2 (costs, timeliness, benchmarking), document the process and record mid-term indicators." },
+    { "key": "evaluation",     "order": 4, "label": "Evaluation",
+      "instructions": "Complete Level 3 with post-treatment data and attribute results. Sustainability of results is assessed here." }
+  ],
+
+  "levels": [
+    { "key": 1, "label": "Design & Relevance",  "audience": "Internal · LAB" },
+    { "key": 2, "label": "Economic Evaluation", "audience": "Internal · LAB" },
+    { "key": 3, "label": "Results & Impact",    "audience": "Counterparts · knowledge products" },
+    { "key": 4, "label": "Lessons Learned",     "audience": "Counterparts · knowledge products", "transversal": true }
+  ],
+
+  "field_sets": {
+    "degree_assessment": [
+      { "key": "degree",        "label": "Degree",        "type": "degree",   "required": true },
+      { "key": "justification", "label": "Justification", "type": "longtext", "required": true },
+      { "key": "notes",         "label": "Notes",         "type": "text" }
+    ],
+    "narrative": [
+      { "key": "text",  "label": "Descriptive field", "type": "longtext", "required": true },
+      { "key": "notes", "label": "Notes",             "type": "text" }
+    ]
+  },
+
+  "dimensions": [
+
+    { "code": "L1.1", "level": 1, "name": "Relevance", "origin": "OECD", "core": true, "applies_to": ["all"],
+      "definition": "The extent to which the intervention objectives and design respond to beneficiaries', global, country and partner/institution needs, policies and priorities, and continue to do so if circumstances change.",
+      "guiding_questions": [
+        "Does the pilot address a real and prioritized problem identified by the community or local government?",
+        "Is it consistent with IDB country strategy, the SDGs or the Paris Agreement?",
+        "Does the design include analysis of marginalized or vulnerable groups (leave no one behind)?"
+      ],
+      "fields": "degree_assessment",
+      "stages": { "design": ["degree", "justification", "notes"] } },
+
+    { "code": "L1.2", "level": 1, "name": "Sustainability of design", "origin": "OECD", "core": true, "applies_to": ["all"],
+      "definition": "Whether the design model provides mechanisms for the continuation of benefits once the LAB's involvement ends. The full assessment of sustainability (observed benefits) is conducted at Level 3.",
+      "guiding_questions": [
+        "Does the design contemplate how continuity will be financed without extraordinary IDB resources?",
+        "Does the counterpart have the technical and operational capacity to maintain the intervention?",
+        "Does the design anticipate climate, social or institutional risks that could affect continuity?"
+      ],
+      "fields": "degree_assessment",
+      "stages": { "design": ["degree", "justification", "notes"] } },
+
+    { "code": "L1.3", "level": 1, "name": "Coherence", "origin": "OECD", "core": false, "applies_to": ["all"],
+      "definition": "The compatibility of the intervention with other interventions in a country, sector or institution: internal coherence (other IDB actions and norms) and external coherence (other interventions in the same country).",
+      "guiding_questions": [
+        "Does the pilot complement other IDB operations in the same city or country?",
+        "Was coordination established with local government, civil society or other donors?",
+        "Were there similar interventions in the territory? Were they taken into account?",
+        "Is the intervention consistent with international commitments the country or IDB have signed?"
+      ],
+      "fields": "degree_assessment",
+      "stages": { "design": ["degree", "justification", "notes"] } },
+
+    { "code": "L1.4", "level": 1, "name": "Cultural localization", "origin": "C-LAB", "core": false, "applies_to": ["all"],
+      "guiding_questions": [
+        "Does the intervention adequately engage with the practices, identities and ways of life of the local community?",
+        "Was it co-created with or validated by territorial stakeholders?"
+      ],
+      "fields": "degree_assessment",
+      "stages": { "design": ["degree", "justification", "notes"] } },
+
+    { "code": "L1.5", "level": 1, "name": "Relationship with existing regulations", "origin": "C-LAB", "core": false, "applies_to": ["all"],
+      "guiding_questions": [
+        "Does the intervention comply with applicable urban, environmental, construction and safety regulations?",
+        "If not, does it clearly identify the adjustments required?"
+      ],
+      "fields": "degree_assessment",
+      "stages": { "design": ["degree", "justification", "notes"] } },
+
+    { "code": "L1.6", "level": 1, "name": "User experience & continuous feedback", "origin": "C-LAB", "core": true, "applies_to": ["all"],
+      "guiding_questions": [
+        "Is the prototype useful from the perspective of the citizens who use it? In what ways?",
+        "What can be improved?",
+        "Is there a mechanism for continuous feedback, or was feedback collected once?"
+      ],
+      "fields": "degree_assessment",
+      "stages": { "design": ["degree", "justification", "notes"] } },
+
+    { "code": "L1.7", "level": 1, "name": "Construction system", "origin": "C-LAB", "core": false, "applies_to": ["urban"],
+      "applies_note": "Only for urban interventions with a material/built component.",
+      "guiding_questions": [
+        "Is the proposed construction system cost-effective?",
+        "Does it use local inputs and capacities?",
+        "Does it allow for viable community management during and after works?"
+      ],
+      "fields": "degree_assessment",
+      "stages": { "design": ["degree", "justification", "notes"] } },
+
+    { "code": "L2.1", "level": 2, "name": "Disaggregated costs", "origin": "OECD", "core": true, "applies_to": ["all"],
+      "definition": "Comprehensive budget split into capital expenditure (one-time investments to create or install the intervention) and operating expenditure (recurring costs to operate and sustain it). All amounts in USD. Totals are computed, never typed.",
+      "currency_rule": "Report in USD. If the source figure is in another currency, record the original amount and currency in the optional cost breakdown and enter the USD equivalent here.",
+      "fields": [
+        { "key": "capex.construction", "label": "Construction and physical installation", "type": "money_usd", "group": "capex", "help": "Civil works, fixed infrastructure, structural materials" },
+        { "key": "capex.equipment",    "label": "Durable equipment",                       "type": "money_usd", "group": "capex", "help": "Sensors, hardware, vehicles, tools, durable furnishings" },
+        { "key": "capex.software",     "label": "Software development and digital infrastructure", "type": "money_usd", "group": "capex", "help": "Platforms, applications, system integrations" },
+        { "key": "capex.studies",      "label": "Design, engineering and feasibility studies", "type": "money_usd", "group": "capex", "help": "Architectural design, technical studies, prototyping" },
+        { "key": "capex.training",     "label": "Initial training and capacity-building",  "type": "money_usd", "group": "capex", "help": "One-time training that installs capacity in the counterpart" },
+        { "key": "capex.other",        "label": "Other capex",                             "type": "money_usd", "group": "capex", "help": "Sum here any one-time cost not covered by the categories above; describe it in the notes." },
+        { "key": "opex.personnel",     "label": "Personnel",                               "type": "money_usd", "group": "opex", "help": "Human resources for ongoing operation (annual)" },
+        { "key": "opex.facilities",    "label": "Facilities",                              "type": "money_usd", "group": "opex", "help": "Rent, utilities, maintenance (annual)" },
+        { "key": "opex.materials",     "label": "Equipment and materials",                 "type": "money_usd", "group": "opex", "help": "Consumables and replacements (annual)" },
+        { "key": "opex.program_inputs","label": "Other program inputs",                    "type": "money_usd", "group": "opex" },
+        { "key": "opex.beneficiary_inputs", "label": "Beneficiary or client inputs",       "type": "money_usd", "group": "opex" },
+        { "key": "opex.other",         "label": "Other opex",                              "type": "money_usd", "group": "opex", "help": "Sum here any recurring cost not covered above; describe it in the notes." },
+        { "key": "opex.period",        "label": "Opex reporting period",                   "type": "enum", "options": ["per_year", "per_month", "one_time_none"], "default": "per_year" },
+        { "key": "funding_note",       "label": "Who paid for what",                       "type": "longtext", "help": "e.g. IDB financed surveys only; vehicles funded by a third party" },
+        { "key": "notes",              "label": "Notes",                                   "type": "text" }
+      ],
+      "computed": [
+        { "key": "capex_total", "label": "Total capex", "formula": "sum(capex.*)" },
+        { "key": "opex_total",  "label": "Total opex",  "formula": "sum(opex.*)" },
+        { "key": "pilot_total", "label": "Total pilot cost", "formula": "capex_total + opex_total" }
+      ],
+      "optional_breakdown": "cost_items",
+      "stages": { "implementation": ["*"], "evaluation": ["*"] } },
+
+    { "code": "L2.2", "level": 2, "name": "Timeliness", "origin": "OECD", "core": false, "applies_to": ["all"],
+      "guiding_questions": [
+        "Was the project delivered within the planned timeframe?",
+        "If not, what were the main factors affecting timeliness?"
+      ],
+      "fields": [
+        { "key": "on_time",     "label": "Delivered on time?", "type": "enum", "options": ["yes", "partially", "no"], "required": true },
+        { "key": "planned_end", "label": "Planned completion date", "type": "date" },
+        { "key": "actual_end",  "label": "Actual completion date",  "type": "date" },
+        { "key": "text",        "label": "Factors affecting timeliness", "type": "longtext", "required": true },
+        { "key": "notes",       "label": "Notes", "type": "text" }
+      ],
+      "stages": { "implementation": ["*"], "evaluation": ["*"] } },
+
+    { "code": "L2.3", "level": 2, "name": "Benchmarking", "origin": "OECD", "core": false, "applies_to": ["all"],
+      "guiding_questions": [
+        "Is the project cost-effective relative to alternatives?",
+        "Are there similar interventions against which to compare the cost per unit result?"
+      ],
+      "fields": "narrative",
+      "stages": { "implementation": ["text", "notes"], "evaluation": ["text", "notes"] } },
+
+    { "code": "L3.1", "level": 3, "name": "Effectiveness", "origin": "OECD", "core": true, "applies_to": ["all"],
+      "definition": "The extent to which the intervention achieved, or is expected to achieve, its objectives and results, including any differential results across groups.",
+      "guiding_questions": [
+        "What proportion of the pilot's stated objectives was achieved?",
+        "Were there unplanned achievements?",
+        "Were the results equitable? Did benefits reach the most vulnerable groups the intervention sought to serve?",
+        "What contextual, design or implementation conditions explain the outcomes?"
+      ],
+      "fields": "degree_assessment",
+      "stages": { "evaluation": ["degree", "justification", "notes"] } },
+
+    { "code": "L3.2", "level": 3, "name": "Impact", "origin": "OECD", "core": true, "applies_to": ["all"],
+      "repeatable": "hypothesis",
+      "repeatable_note": "One record per impact hypothesis. A pilot may have as many hypotheses as it needs; add them at ideation or later.",
+      "definition": "The extent to which the intervention has generated or is expected to generate significant positive or negative, intended or unintended, higher-level effects. Where evidence is limited or inferred, say so explicitly rather than leaving the field empty.",
+      "guiding_questions": [
+        "Were changes observed in the urban or social environment (mobility, temperature, safety, social cohesion, land values)?",
+        "Did anything change in institutional capacity? Did the counterpart adopt new practices, tools or processes?",
+        "Were there unintended effects, positive or negative, on groups not initially considered?",
+        "Is there a Theory of Change or causal chain linking the pilot to expected effects?"
+      ],
+      "fields": [
+        { "key": "hypothesis",     "label": "Hypothesis",            "type": "longtext", "required": true, "help": "Expected direct or indirect benefit, stated as a testable claim." },
+        { "key": "counterfactual", "label": "Counterfactual",         "type": "longtext", "required": true, "help": "What would have happened without the pilot, and how it is approximated (control area, synthetic scenario, pre/post). Not the null hypothesis." },
+        { "key": "indicator",      "label": "Indicator",             "type": "text",     "required": true },
+        { "key": "description",    "label": "Description / formula", "type": "longtext" },
+        { "key": "data_source",    "label": "Data source",           "type": "text" },
+        { "key": "spatial_unit",   "label": "Unit of analysis",      "type": "text", "help": "Block, street segment, census tract, buffer, classroom, household…" },
+        { "key": "baseline_t0",    "label": "Baseline (T0)",         "type": "longtext" },
+        { "key": "midterm_t1",     "label": "Mid-term (T1)",         "type": "longtext" },
+        { "key": "endline_t2",     "label": "Endline (T2)",          "type": "longtext" },
+        { "key": "attribution_method", "label": "Identification strategy", "type": "enum", "options": ["did", "iv", "rdd", "synthetic_control", "rct", "pre_post", "qualitative", "none"], "help": "Preferred: DiD. Pre/post without control and qualitative are valid as long as they are declared." },
+        { "key": "notes",          "label": "Notes",                 "type": "text" }
+      ],
+      "stages": {
+        "ideation":       ["hypothesis", "counterfactual", "indicator", "description", "data_source", "spatial_unit", "attribution_method", "notes"],
+        "design":         ["hypothesis", "counterfactual", "indicator", "description", "data_source", "spatial_unit", "attribution_method", "baseline_t0", "notes"],
+        "implementation": ["midterm_t1", "notes"],
+        "evaluation":     ["endline_t2", "attribution_method", "notes"]
+      } },
+
+    { "code": "L3.3", "level": 3, "name": "Sustainability of results", "origin": "OECD", "core": true, "applies_to": ["all"],
+      "definition": "The extent to which the net benefits of the intervention continue or are likely to continue after the LAB withdraws.",
+      "guiding_questions": [
+        "Is there evidence or indication that benefits continue after the LAB's involvement ended?",
+        "What risks threaten continuity (financial, political, environmental, social)?",
+        "Has the local government institutionalized the intervention or made concrete plans to do so?"
+      ],
+      "fields": "degree_assessment",
+      "stages": { "evaluation": ["degree", "justification", "notes"] } },
+
+    { "code": "L4.1", "level": 4, "name": "Design lessons", "origin": "OECD", "core": true, "applies_to": ["all"],
+      "guiding_questions": [
+        "What did the team learn during the design process?",
+        "What design decisions were taken, what tensions emerged and what trade-offs were resolved?",
+        "Which particularities of the design are expected to make the intervention more effective, and why?"
+      ],
+      "fields": "narrative",
+      "stages": { "design": ["text", "notes"], "implementation": ["text", "notes"], "evaluation": ["text", "notes"] } },
+
+    { "code": "L4.2", "level": 4, "name": "Implementation lessons", "origin": "OECD", "core": true, "applies_to": ["all"],
+      "guiding_questions": [
+        "What operational, technical or institutional learnings emerged during execution?",
+        "How did the counterpart experience working with the LAB? What burden did the process impose on them?"
+      ],
+      "fields": "narrative",
+      "stages": { "implementation": ["text", "notes"], "evaluation": ["text", "notes"] } },
+
+    { "code": "L4.3", "level": 4, "name": "Scaling lessons", "origin": "OECD", "core": true, "applies_to": ["all"],
+      "guiding_questions": [
+        "Under what conditions could this solution be replicated or scaled?",
+        "What adjustments would it require?"
+      ],
+      "fields": "narrative",
+      "stages": { "evaluation": ["text", "notes"] } },
+
+    { "code": "L4.4", "level": 4, "name": "Evaluation lessons", "origin": "OECD", "core": true, "applies_to": ["all"],
+      "guiding_questions": [
+        "What data should have been collected from the start?",
+        "What methodology would be more appropriate in a subsequent phase?"
+      ],
+      "fields": "narrative",
+      "stages": { "evaluation": ["text", "notes"] } },
+
+    { "code": "L4.5", "level": 4, "name": "Qualitative co-benefits", "origin": "C-LAB", "core": false, "applies_to": ["all"],
+      "guiding_questions": [
+        "What sensory, psychological or relational improvements did participants report that are not easily quantifiable?",
+        "At design stage: which co-benefits are expected? At evaluation: which were observed?"
+      ],
+      "fields": "narrative",
+      "stages": { "design": ["text", "notes"], "implementation": ["text", "notes"], "evaluation": ["text", "notes"] } }
+  ],
+
+  "stage_completion": {
+    "rule": "Completing a stage stores a snapshot of every field editable at that stage and marks the stage complete. Fields remain editable afterwards; the UI warns before saving a change to a completed stage.",
+    "required_for_completion": "All core dimensions editable at the stage must have a status (filled, no_evidence or not_applicable). Non-core dimensions may be left empty."
+  }
+}
