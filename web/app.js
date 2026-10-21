@@ -372,7 +372,7 @@
     if (!r) return `<span class="muted">—</span>`;
     if (r.status !== "filled") return `<span class="badge na">${esc(titleCase(r.status))}</span> ${esc(r.note || "")}`;
     const v = valueOf(r, f);
-    if (f.type === "degree") return `<span class="degree ${esc(v)}">${esc(titleCase(v))}</span>${v === "na" && r.note ? " — " + esc(r.note) : ""}`;
+    if (f.type === "degree") return `<span class="degree ${esc(v)}">${esc(catalog.degree_scale.find(d => d.key === v)?.label || v)}</span>${v === "na" && r.note ? " — " + esc(r.note) : ""}`;
     if (f.type === "money_usd") return money(v);
     if (f.type === "enum") return esc(f.option_labels?.[v] || titleCase(v));
     return esc(v);

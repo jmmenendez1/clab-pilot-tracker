@@ -1,4 +1,4 @@
-web/config.js
+# web/config.js holds only the public anon key; it is committed so GitHub Pages can serve it
 __pycache__/
 *.pyc
 .env
