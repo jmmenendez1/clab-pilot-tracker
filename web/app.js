@@ -85,7 +85,8 @@
   async function viewPilots() {
     setNav("pilots");
     $main.innerHTML = `<div class="toolbar"><div><h1>Pilots</h1><p class="sub" style="margin:0">One row per pilot. Open one to continue data collection.</p></div>
-      <div class="spacer"></div><a class="btn primary" href="#/pilots/new">+ New pilot</a></div><div id="list" class="empty">Loading…</div>`;
+      <div class="spacer"></div><button class="btn" id="import">Import workbook…</button><a class="btn primary" href="#/pilots/new">+ New pilot</a></div><div id="list" class="empty">Loading…</div>`;
+    document.getElementById("import").onclick = importDialog;
     const pilots = await data.listPilots();
     if (!pilots.length) { document.getElementById("list").innerHTML = `<div class="empty">No pilots yet. <a href="#/pilots/new">Register the first one.</a></div>`; return; }
     const progress = await Promise.all(pilots.map(p => data.currentResponses(p.id).then(rows => levelProgress(p, rows))));
@@ -163,7 +164,7 @@
         <div class="spacer"></div><a class="btn" href="#/pilots/${id}/summary">Summary sheet</a><a class="btn" href="#/pilots/${id}/edit">Edit details</a></div>
       <details class="card" style="padding:10px 20px"><summary style="cursor:pointer;color:var(--blue)">Problem, target population, lead</summary>
         <dl class="kv" style="margin-top:10px"><dt>Problem definition</dt><dd>${esc(pilot.problem_definition || "—")}</dd><dt>Target population</dt><dd>${esc(pilot.target_population || "—")}</dd>
-        <dt>Lead / responsible</dt><dd>${esc(pilot.lead || "—")}</dd><dt>Counterpart</dt><dd>${esc(pilot.counterpart || "—")}</dd><dt>Dates</dt><dd>${esc(pilot.date_started || "?")} → ${esc(pilot.date_ended || "ongoing")}</dd></dl></details>
+        <dt>Lead / responsible</dt><dd>${esc(pilot.lead || "—")}</dd><dt>Counterpart</dt><dd>${esc(pilot.counterpart || "—")}</dd><dt>Dates</dt><dd>${esc(pilot.date_started || "?")} → ${esc(pilot.date_ended || "ongoing")}</dd>${pilot.import_source ? `<dt>Imported from</dt><dd>${esc(pilot.import_source)}</dd>` : ""}</dl></details>
       <div class="stages">${tabs}</div>
       <div class="stage-intro"><strong>${esc(stageDef.label)}.</strong> ${esc(stageDef.instructions)}</div>
       ${done ? `<div class="banner warn">This stage was completed on ${esc(fmtDate(done.completed_at))} by ${esc(done.completer?.full_name || done.completer?.email || "")}. Fields stay editable; you will be asked to confirm the first change.</div>` : ""}
@@ -365,6 +366,42 @@
     toast(`${stageLabel(stage)} completed`);
     location.hash = `#/pilots/${pilot.id}/${(pilot.mode === "prospective" && nx) ? nx : stage}`;
     render();
+  }
+
+  /* ---------------- import a retrospective workbook ---------------- */
+  async function importDialog() {
+    const bg = document.createElement("div"); bg.className = "modal-bg";
+    bg.innerHTML = `<div class="modal"><h2>Import a data-collection workbook</h2>
+      <p class="help">Reads an Excel workbook in the template format (.xlsx / .xlsm) and creates the pilot with its hypotheses and values. Cost figures written as text land in the L2.1 notes; enter the USD amounts afterwards.</p>
+      <input type="file" id="wb" accept=".xlsx,.xlsm"><div id="preview" style="margin-top:12px"></div>
+      <div class="actions"><button class="btn" id="cancel">Cancel</button><button class="btn primary" id="go" disabled>Import</button></div></div>`;
+    document.body.appendChild(bg);
+    let parsed = null;
+    bg.querySelector("#cancel").onclick = () => bg.remove();
+    bg.querySelector("#wb").onchange = async e => {
+      const file = e.target.files[0]; if (!file) return;
+      try {
+        parsed = window.CLAB.importWorkbook(new Uint8Array(await file.arrayBuffer()), catalog, file.name);
+        const p = parsed.pilot;
+        bg.querySelector("#preview").innerHTML = `<dl class="kv"><dt>Pilot</dt><dd><strong>${esc(p.name)}</strong></dd><dt>TC · place</dt><dd>${esc(p.tc_code)} · ${esc(p.city)}, ${esc(p.country)}</dd>
+          <dt>Type</dt><dd>${esc(typeLabel(p.pilot_type))} · ${esc(titleCase(p.attribution_category))}-based · retrospective</dd>
+          <dt>Content</dt><dd>${parsed.hypotheses.length} hypotheses · ${parsed.responses.length} values (${parsed.responses.filter(r => r.status !== "filled").length} marked no evidence)</dd></dl>
+          ${parsed.warnings.length ? `<div class="banner warn" style="margin-top:10px"><strong>Check after import:</strong><ul>${parsed.warnings.map(w => `<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}`;
+        bg.querySelector("#go").disabled = !p.name || !p.tc_code;
+      } catch (err) { bg.querySelector("#preview").innerHTML = `<div class="banner err">Could not read this file: ${esc(err.message)}</div>`; }
+    };
+    bg.querySelector("#go").onclick = async () => {
+      const btn = bg.querySelector("#go"); btn.disabled = true; btn.textContent = "Importing…";
+      try {
+        const { pilot: pf, hypotheses, responses } = parsed;
+        const pilot = await data.createPilot(pf);
+        const hypIds = [];
+        for (const h of hypotheses) hypIds.push((await data.addHypothesis(pilot.id)).id);
+        for (const r of responses) await data.saveResponse({ pilot_id: pilot.id, dimension_code: r.dimension_code, field_key: r.field_key, hypothesis_id: r.hypothesis_index == null ? null : hypIds[r.hypothesis_index],
+          stage: r.stage, status: r.status, value_text: r.value_text ?? null, value_num: null, value_date: null, note: r.note ?? null });
+        bg.remove(); toast(`Imported ${pf.name}`); location.hash = `#/pilots/${pilot.id}/summary`; render();
+      } catch (err) { btn.textContent = "Import"; btn.disabled = false; bg.querySelector("#preview").insertAdjacentHTML("beforeend", `<div class="banner err">Import failed: ${esc(err.message)}</div>`); }
+    };
   }
 
   /* ---------------- views: pilot summary (Evaluation Sheet) ---------------- */

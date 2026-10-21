@@ -38,6 +38,15 @@ docs/                            deployment notes for IDB IT              — ph
 
 Append them to `db/seed_allowed_emails.sql` and re-run it (it upserts). Removing someone: set `active = false` on their row in `users`.
 
+## Importing retrospective workbooks
+
+Two ways to load a pilot evaluated in the Excel template (`.xlsx`/`.xlsm`):
+
+- **In the app**: Pilots → *Import workbook…* → choose the file → review the preview and warnings → Import. The pilot is created as retrospective, attributed to you, with one response per field and the stage tab it came from.
+- **As SQL** (several at once, from a terminal with Node and `npm i xlsx`): `node import/workbooks_to_sql.js out.sql file1.xlsm file2.xlsm …`, then paste `out.sql` into the Supabase SQL editor. Pilots that already exist (same TC code and name) are skipped.
+
+Run `db/migrations/001_import_source.sql` once before the first import (adds the provenance column). Cost figures written as free text land in the L2.1 notes; enter the USD amounts by subcategory afterwards. `node import/test_import.js file.xlsm` shows what would be imported without writing anything.
+
 ## Local development
 
 ```
