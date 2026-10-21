@@ -41,7 +41,8 @@ Append them to `db/seed_allowed_emails.sql` and re-run it (it upserts). Removing
 ## Local development
 
 ```
-cd web && python3 -m http.server 8080
+python3 -m http.server 8080   # from the repository root, then open http://localhost:8080/web/
+# add ?local=1 to the URL to run against the in-browser store instead of Supabase
 ```
 
 ## Moving to IDB infrastructure (later)
