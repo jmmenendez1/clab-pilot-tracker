@@ -71,6 +71,10 @@ class LocalAdapter {
       .map(r => ({ ...r, author: this.user })).sort((a, b) => b.created_at.localeCompare(a.created_at));
   }
 
+  async allResponses(pilotId) {
+    return this.db.responses.filter(r => r.pilot_id === pilotId).map(r => ({ ...r, author: this.user })).sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }
+
   async listCompletions(pilotId) { return this.db.completions.filter(c => c.pilot_id === pilotId).map(c => ({ ...c, completer: this.user })); }
   async completeStage(pilotId, stage, snapshot) {
     const c = { id: this.db.seq++, pilot_id: pilotId, stage, snapshot, completed_by: this.user.id, completed_at: new Date().toISOString() };
@@ -152,6 +156,11 @@ class SupabaseAdapter {
     let q = this.sb.from("responses").select("*").eq("pilot_id", pilotId).eq("dimension_code", dimension).eq("field_key", field).order("created_at", { ascending: false });
     q = hypothesisId ? q.eq("hypothesis_id", hypothesisId) : q.is("hypothesis_id", null);
     const { data, error } = await q; this._throw(error); return this._attachAuthors(data);
+  }
+
+  async allResponses(pilotId) {
+    const { data, error } = await this.sb.from("responses").select("*").eq("pilot_id", pilotId).order("created_at"); this._throw(error);
+    return this._attachAuthors(data);
   }
 
   async listCompletions(pilotId) {

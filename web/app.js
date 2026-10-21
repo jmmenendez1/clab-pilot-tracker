@@ -51,7 +51,7 @@
     $who.innerHTML = u && !u.unauthorised
       ? `<span class="who">${esc(u.full_name || u.email)}</span> ${data.mode === "local" ? '<span class="mode">LOCAL MODE</span>' : ""} <a href="#" id="signout" class="btn small ghost">Sign out</a>`
       : (data.mode === "local" ? '<span class="mode">LOCAL MODE</span>' : "");
-    $nav.innerHTML = u && !u.unauthorised ? `<a href="#/pilots" data-nav="pilots">Pilots</a><a href="#/pilots/new" data-nav="new">New pilot</a>` : "";
+    $nav.innerHTML = u && !u.unauthorised ? `<a href="#/pilots" data-nav="pilots">Pilots</a><a href="#/pilots/new" data-nav="new">New pilot</a><a href="#/export" data-nav="export">Export</a>` : "";
     const so = document.getElementById("signout");
     if (so) so.onclick = async e => { e.preventDefault(); await data.signOut(); user = null; location.hash = "#/login"; render(); };
   }
@@ -160,7 +160,7 @@
     $main.innerHTML = `
       <div class="toolbar"><div><h1>${esc(pilot.name)}</h1><p class="sub" style="margin:0"><span class="code">${esc(pilot.tc_code)}</span> · ${esc(pilot.city)}, ${esc(pilot.country)} ·
         <span class="badge">${esc(typeLabel(pilot.pilot_type))}</span> <span class="badge">${esc(titleCase(pilot.attribution_category))}-based</span> <span class="badge">${esc(titleCase(pilot.mode))}</span></p></div>
-        <div class="spacer"></div><a class="btn" href="#/pilots/${id}/edit">Edit details</a></div>
+        <div class="spacer"></div><a class="btn" href="#/pilots/${id}/summary">Summary sheet</a><a class="btn" href="#/pilots/${id}/edit">Edit details</a></div>
       <details class="card" style="padding:10px 20px"><summary style="cursor:pointer;color:var(--blue)">Problem, target population, lead</summary>
         <dl class="kv" style="margin-top:10px"><dt>Problem definition</dt><dd>${esc(pilot.problem_definition || "—")}</dd><dt>Target population</dt><dd>${esc(pilot.target_population || "—")}</dd>
         <dt>Lead / responsible</dt><dd>${esc(pilot.lead || "—")}</dd><dt>Counterpart</dt><dd>${esc(pilot.counterpart || "—")}</dd><dt>Dates</dt><dd>${esc(pilot.date_started || "?")} → ${esc(pilot.date_ended || "ongoing")}</dd></dl></details>
@@ -367,6 +367,95 @@
     render();
   }
 
+  /* ---------------- views: pilot summary (Evaluation Sheet) ---------------- */
+  function cell(r, f) {
+    if (!r) return `<span class="muted">—</span>`;
+    if (r.status !== "filled") return `<span class="badge na">${esc(titleCase(r.status))}</span> ${esc(r.note || "")}`;
+    const v = valueOf(r, f);
+    if (f.type === "degree") return `<span class="degree ${esc(v)}">${esc(titleCase(v))}</span>${v === "na" && r.note ? " — " + esc(r.note) : ""}`;
+    if (f.type === "money_usd") return money(v);
+    if (f.type === "enum") return esc(f.option_labels?.[v] || titleCase(v));
+    return esc(v);
+  }
+  const who = r => r ? `${esc(r.author?.full_name || r.author?.email || "")}<br><span class="muted">${esc(fmtDate(r.created_at))}</span>` : "";
+
+  async function viewSummary(id) {
+    setNav("pilots");
+    const pilot = await data.getPilot(id);
+    if (!pilot) { $main.innerHTML = `<div class="empty">Pilot not found.</div>`; return; }
+    const [hyps, rows, completions] = await Promise.all([data.listHypotheses(id), data.currentResponses(id), data.listCompletions(id)]);
+    const cur = new Map(rows.map(r => [respKey(r.dimension_code, r.field_key, r.hypothesis_id), r]));
+    const sections = catalog.levels.map(level => {
+      const dims = catalog.dimensions.filter(d => d.level === level.key && applies(d, pilot));
+      const body = dims.map(dim => {
+        const fields = dimFields(dim);
+        if (dim.repeatable === "hypothesis") {
+          return hyps.map(h => `<tr class="dimrow"><td class="code">${esc(dim.code)}</td><td colspan="4"><strong>${esc(dim.name)} — hypothesis ${h.ordinal}</strong></td></tr>` +
+            fields.map(f => { const r = cur.get(respKey(dim.code, f.key, h.id)); return r ? `<tr><td></td><td>${esc(f.label)}</td><td colspan="2">${cell(r, f)}</td><td class="who">${who(r)}</td></tr>` : ""; }).join("")).join("");
+        }
+        if (dim.code === "L2.1") {
+          const money_ = fields.filter(f => f.type === "money_usd");
+          const sum = g => money_.filter(f => f.group === g).reduce((a, f) => { const r = cur.get(respKey(dim.code, f.key, null)); return a + (r?.status === "filled" && r.value_num != null ? Number(r.value_num) : 0); }, 0);
+          const any = money_.some(f => cur.has(respKey(dim.code, f.key, null)));
+          return `<tr class="dimrow"><td class="code">${esc(dim.code)}</td><td colspan="4"><strong>${esc(dim.name)}</strong> <span class="muted">USD</span></td></tr>` +
+            money_.map(f => { const r = cur.get(respKey(dim.code, f.key, null)); return r ? `<tr><td></td><td>${esc(f.label)}</td><td colspan="2">${cell(r, f)}</td><td class="who">${who(r)}</td></tr>` : ""; }).join("") +
+            (any ? `<tr class="total"><td></td><td>Total capex</td><td colspan="3">${money(sum("capex"))}</td></tr><tr class="total"><td></td><td>Total opex</td><td colspan="3">${money(sum("opex"))}</td></tr><tr class="total"><td></td><td>Total pilot cost</td><td colspan="3">${money(sum("capex") + sum("opex"))}</td></tr>` : "") +
+            fields.filter(f => f.type !== "money_usd").map(f => { const r = cur.get(respKey(dim.code, f.key, null)); return r ? `<tr><td></td><td>${esc(f.label)}</td><td colspan="2">${cell(r, f)}</td><td class="who">${who(r)}</td></tr>` : ""; }).join("");
+        }
+        const main = fields.find(f => f.required) || fields[0];
+        const r = cur.get(respKey(dim.code, main.key, null));
+        const others = fields.filter(f => f !== main).map(f => { const x = cur.get(respKey(dim.code, f.key, null)); return x ? `<div><span class="muted">${esc(f.label)}:</span> ${cell(x, f)}</div>` : ""; }).join("");
+        return `<tr class="dimrow"><td class="code">${esc(dim.code)}</td><td><strong>${esc(dim.name)}</strong>${dim.core ? ' <span class="badge core">Core</span>' : ""}</td><td>${cell(r, main)}</td><td>${others}</td><td class="who">${who(r)}</td></tr>`;
+      }).join("");
+      return `<h2 class="level-h level-${level.key}">Level ${level.key} — ${esc(level.label)}</h2><table class="summary"><thead><tr><th style="width:60px">Code</th><th style="width:220px">Dimension</th><th>Assessment</th><th>Detail</th><th style="width:170px">Last saved by</th></tr></thead><tbody>${body}</tbody></table>`;
+    }).join("");
+
+    const timeline = STAGES.map(s => { const c = completions.filter(x => x.stage === s).sort((a, b) => b.completed_at.localeCompare(a.completed_at))[0]; return `<span class="badge ${c ? "done" : ""}">${esc(stageLabel(s))}${c ? " ✓ " + esc(fmtDate(c.completed_at)) : ""}</span>`; }).join(" ");
+    $main.innerHTML = `
+      <div class="toolbar noprint"><a class="btn" href="#/pilots/${id}">← Back to data collection</a><div class="spacer"></div>
+        <button class="btn" id="print">Print / save as PDF</button><button class="btn" id="csv1">Download this pilot (CSV)</button></div>
+      <div class="sheet">
+        <div class="sheet-head"><div><div class="muted">CITIES LAB · CSD/HUD · PILOT EVALUATION SHEET</div><h1>${esc(pilot.name)}</h1>
+          <p class="sub"><span class="code">${esc(pilot.tc_code)}</span> · ${esc(pilot.city)}, ${esc(pilot.country)} · ${esc(typeLabel(pilot.pilot_type))} · ${esc(titleCase(pilot.attribution_category))}-based · ${esc(titleCase(pilot.mode))}</p></div>
+          <div class="muted" style="text-align:right">Generated ${esc(fmtDate(new Date().toISOString()))}<br>Framework v1.3.3</div></div>
+        <dl class="kv"><dt>Problem definition</dt><dd>${esc(pilot.problem_definition || "—")}</dd><dt>Target population</dt><dd>${esc(pilot.target_population || "—")}</dd>
+          <dt>Lead / responsible</dt><dd>${esc(pilot.lead || "—")}</dd><dt>Counterpart</dt><dd>${esc(pilot.counterpart || "—")}</dd><dt>Dates</dt><dd>${esc(pilot.date_started || "?")} → ${esc(pilot.date_ended || "ongoing")}</dd>
+          <dt>Stages</dt><dd>${timeline}</dd></dl>
+        ${sections}
+      </div>`;
+    document.getElementById("print").onclick = () => window.print();
+    document.getElementById("csv1").onclick = () => {
+      const { columns, rows: wide } = window.CLAB.buildWide(catalog, [{ pilot, hypotheses: hyps, responses: rows, completions }]);
+      window.CLAB.download(`${pilot.tc_code}_${pilot.name.replace(/[^\w]+/g, "_").slice(0, 40)}.csv`, window.CLAB.toCsv(columns.map(c => c.key), wide), "text/csv");
+    };
+  }
+
+  /* ---------------- views: export ---------------- */
+  async function viewExport() {
+    setNav("export");
+    $main.innerHTML = `<h1>Export</h1><p class="sub">One row per pilot, one column per indicator. Each value column is followed by <code>_status</code> and <code>_note</code>; hypotheses appear as <code>h1…hN</code> groups. The codebook maps every column to its dimension and field.</p>
+      <div class="card"><div class="toolbar"><button class="btn primary" id="xlsx">Download XLSX (data + codebook + history)</button><button class="btn" id="csv">Download wide CSV</button><button class="btn" id="hist">Download change history CSV</button><button class="btn" id="cb">Download codebook CSV</button></div>
+      <div id="status" class="help">Loading…</div></div>`;
+    const pilots = await data.listPilots();
+    const bundle = await Promise.all(pilots.map(async pilot => {
+      const [hypotheses, responses, completions, history] = await Promise.all([data.listHypotheses(pilot.id), data.currentResponses(pilot.id), data.listCompletions(pilot.id), data.allResponses(pilot.id)]);
+      return { pilot, hypotheses, responses, completions, history };
+    }));
+    const wide = window.CLAB.buildWide(catalog, bundle);
+    const hist = window.CLAB.buildHistory(catalog, bundle);
+    const histCols = ["pilot_id", "pilot", "tc_code", "dimension_code", "dimension", "field", "hypothesis", "stage", "status", "value", "note", "author", "saved_at"];
+    const cbCols = ["column", "dimension", "field", "label", "type"];
+    document.getElementById("status").textContent = `${pilots.length} pilots · ${wide.columns.length} columns · ${hist.length} saved values in history`;
+    const stamp = new Date().toISOString().slice(0, 10);
+    document.getElementById("csv").onclick = () => window.CLAB.download(`clab_pilots_wide_${stamp}.csv`, window.CLAB.toCsv(wide.columns.map(c => c.key), wide.rows), "text/csv");
+    document.getElementById("hist").onclick = () => window.CLAB.download(`clab_pilots_history_${stamp}.csv`, window.CLAB.toCsv(histCols, hist), "text/csv");
+    document.getElementById("cb").onclick = () => window.CLAB.download(`clab_codebook_${stamp}.csv`, window.CLAB.toCsv(cbCols, wide.codebook), "text/csv");
+    document.getElementById("xlsx").onclick = () => window.CLAB.download(`clab_pilots_${stamp}.xlsx`, window.CLAB.toXlsx([
+      { name: "pilots_wide", columns: wide.columns.map(c => c.key), rows: wide.rows },
+      { name: "codebook", columns: cbCols, rows: wide.codebook },
+      { name: "history", columns: histCols, rows: hist }]));
+  }
+
   /* ---------------- router ---------------- */
   async function render() {
     renderShell();
@@ -378,6 +467,8 @@
       if (parts[0] === "pilots" && !parts[1]) return await viewPilots();
       if (parts[0] === "pilots" && parts[1] === "new") return await viewPilotForm(null);
       if (parts[0] === "pilots" && parts[2] === "edit") return await viewPilotForm(parts[1]);
+      if (parts[0] === "pilots" && parts[2] === "summary") return await viewSummary(parts[1]);
+      if (parts[0] === "export") return await viewExport();
       if (parts[0] === "pilots") return await viewPilot(parts[1], parts[2]);
       $main.innerHTML = `<div class="empty">Page not found.</div>`;
     } catch (err) {

@@ -161,3 +161,25 @@ tr.clickable { cursor: pointer; }
 .topbar .btn.ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,.4); }
 .topbar .btn.ghost:hover { border-color: #fff; }
 td.code { white-space: nowrap; }
+
+/* ---------- summary sheet ---------- */
+.muted { color: var(--muted); }
+.sheet { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 28px 32px; }
+.sheet-head { display: flex; justify-content: space-between; gap: 20px; border-bottom: 2px solid var(--navy); padding-bottom: 12px; margin-bottom: 14px; }
+.sheet .kv { margin-bottom: 8px; }
+.level-h { margin: 26px 0 8px; padding-left: 10px; border-left: 5px solid var(--line); }
+.level-h.level-1 { border-color: #7c6fe0; } .level-h.level-2 { border-color: #2f7fc9; } .level-h.level-3 { border-color: #2e9c7a; } .level-h.level-4 { border-color: #d19a3a; }
+table.summary td { font-size: 13.5px; }
+table.summary tr.dimrow td { background: #fbfaf7; }
+table.summary tr.total td { font-weight: 700; background: var(--amber-soft); }
+table.summary td.who { font-size: 12px; }
+.degree { font-weight: 700; padding: 1px 8px; border-radius: 4px; }
+.degree.high { background: var(--green-soft); color: var(--ok); } .degree.medium { background: var(--amber-soft); color: var(--amber); }
+.degree.low { background: #fde8e3; color: var(--danger); } .degree.na { background: #f1efe8; color: var(--muted); }
+@media print {
+  .topbar, .noprint, .toast { display: none !important; }
+  body { background: #fff; font-size: 11px; }
+  main { max-width: none; padding: 0; }
+  .sheet { border: 0; padding: 0; }
+  table, tr { page-break-inside: avoid; }
+}
