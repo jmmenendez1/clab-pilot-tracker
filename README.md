@@ -22,11 +22,11 @@ docs/                            deployment notes for IDB IT              — ph
 ### 1. Supabase project
 
 1. Create a free account at supabase.com and a new project (any region in the US; choose a strong database password and keep it).
-2. In **Authentication → Providers → Email**: keep *Email* enabled, turn **Confirm email** off, and keep **Enable email OTP / magic link** on. Disable *Phone* and all social providers.
-3. In **Authentication → URL Configuration**: set *Site URL* to where the front end will be served (for local testing: `http://localhost:8080`). Add the GitHub Pages URL later.
+2. In **Authentication → Sign In / Providers**: keep *Email* enabled, turn **Confirm email** off, keep the magic link on, and make sure **Allow new users to sign up** is ON (a magic-link first sign-in counts as a sign-up; the whitelist in step 5 is what restricts who gets in). Disable *Phone* and all social providers.
+3. In **Authentication → URL Configuration**: set *Site URL* to where the front end will be served (for local testing: `http://localhost:8080`) and add `http://localhost:8080/**` under **Redirect URLs**. Add the GitHub Pages URL and its `/**` pattern later.
 4. In **SQL Editor**, open a new query, paste the whole of `db/schema.sql` and run it. It must finish without errors.
 5. Edit `db/seed_allowed_emails.sql` with the team's emails and roles, paste and run it.
-6. In **Project Settings → API**, copy the *Project URL* and the *anon public* key into `web/config.js` (see `web/config.example.js`). The anon key is safe to publish: every table is protected by row-level security and only whitelisted emails can sign in.
+6. In **Project Settings → API Keys**, copy the *Project URL* and the *anon public* key into `web/config.js` (see `web/config.example.js`). The anon key is safe to publish: every table is protected by row-level security and only whitelisted emails can sign in.
 
 ### 2. Verify
 
