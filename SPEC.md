@@ -41,9 +41,9 @@ A guided web application through which Cities LAB team members register a pilot 
 
 ## 5. Phases
 
-1. Specification, catalog and schema — this document. **Done, pending Juan's validation.**
-2. Repository + Supabase project + schema applied + whitelist seeded.
-3. Front end: screens 1–3.
+1. Specification, catalog and schema — this document. **Done, validated 2026-10-20.**
+2. Repository + Supabase project + schema applied + whitelist seeded. **Done 2026-10-21** (schema tested locally against a simulated Supabase auth; whitelist login via `allowed_emails`).
+3. Front end: screens 1–3. **Done 2026-10-21**, tested end-to-end in local mode; pending first run against Supabase.
 4. Front end: screens 4–5; Python export.
 5. Importer for the five retrospective workbooks (Geothermal, Yaku, Last Mile, Rio, Montería), with the corrections identified in review (currency, classification, counterfactual wording).
 6. Pilot test with 2–3 team members; adjust catalog and UI.
