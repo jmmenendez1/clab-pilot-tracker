@@ -1,0 +1,2 @@
+entry_id,decision,target_entry,parent_entry,metadata_fix,comment
+E096,merge_into,E036,,,"Nota 'redundant (tree detection tandil)': el piloto original de Tandil es E036 (nota 'original tree detection pilot'); el parser lo confundía con el spin-off E080"

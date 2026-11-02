@@ -1,0 +1,11 @@
+pymupdf
+python-docx
+python-pptx
+openpyxl
+pandas
+numpy
+scikit-learn
+rapidfuzz
+pytesseract     # optional: OCR of image-only PDF pages (needs Tesseract with spa/por/eng installed)
+pillow
+anthropic       # stage 3 (API calls with your key)

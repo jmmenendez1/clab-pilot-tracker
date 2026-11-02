@@ -7,3 +7,8 @@ __pycache__/
 *.xlsx
 !import/fixtures/*.xlsx
 .DS_Store
+
+# retrospective pipeline: outputs hold text derived from IDB documents and model answers - never commit
+retro/out/
+retro/.venv/
+retro/*.zip

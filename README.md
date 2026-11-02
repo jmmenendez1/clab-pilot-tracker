@@ -15,6 +15,7 @@ web/                             static front end (no build step)        — pha
 api/                             Python export + importer                 — phases 4–5
 import/                          retrospective workbooks → database       — phase 5
 docs/                            deployment notes for IDB IT              — phase 7
+retro/                           retrospective evaluation pipeline (documents → registry → screening → …); see retro/README.md
 ```
 
 ## Setup (prototype, ~20 minutes)
