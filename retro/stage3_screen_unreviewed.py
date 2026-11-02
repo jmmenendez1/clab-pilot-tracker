@@ -2,7 +2,7 @@
 
 Why
     The retrospective evaluation covers only the pilots the team validated (Review = ✓). The other entries in the
-    repository ("?", the doubtful entry and the two umbrella entries) are not evaluated, but their folders may hold
+    repository ("?", the doubtful entry and the HUB-level entries of RG-T4182) are not evaluated, but their folders may hold
     documents that belong to a validated pilot (misfiled reports, programme reports with a section per pilot).
     This stage finds those documents so they can be moved into the right pilot's knowledge base.
     It does NOT try to decide whether an unvalidated entry is a pilot of its own.

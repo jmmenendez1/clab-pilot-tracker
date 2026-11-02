@@ -9,8 +9,9 @@ This file records what each stage of the retrospective pipeline does, the parame
 | 2026-11-02 | Everything runs locally. Model calls use Juan's Anthropic API key, and nothing derived from documents is committed to git. | Juan | `README.md` (data policy), `.gitignore` |
 | 2026-11-02 | The team's *Review* / *Notes* columns are binding, and the algorithms never reopen them. | Juan | `stage2_registry.py` → `parse_decisions` |
 | 2026-11-02 | Missing information is loaded as `no_evidence` with a note for framework fields, and as `Unknown` without a note for cover fields. Fields are never dropped. | Juan | stage 5 (planned) |
-| 2026-11-02 | **Scope.** Only the pilots the team validated (✓) are evaluated. The unreviewed (“?”) entries are not classified as pilots or non-pilots. They are only screened, to recover documents that belong to validated pilots. | Juan | `stage2_registry.py` → `in_retro_scope`; `stage3_screen_unreviewed.py` |
-| 2026-11-02 | The Cities HUB (RG-T4182) is **not** evaluated as a pilot. That cooperation contains 4 pilots. The two HUB-level entries (*Public Innovation Pilots*, *Urban Experimentation Projects*) are documents to distribute among the pilots they cover. | Juan | stage 2 status `umbrella_not_a_pilot`; stage 3 screens their documents |
+| 2026-11-02 | **Scope.** Only the pilots the team validated (✓) are evaluated (28; see below). The unreviewed (“?”) entries are not classified as pilots or non-pilots. They are only screened, to recover documents that belong to validated pilots. | Juan | `stage2_registry.py` → `in_retro_scope`; `stage3_screen_unreviewed.py` |
+| 2026-11-02 | The Cities HUB (RG-T4182) is **not** evaluated as a pilot. The three HUB-level entries are documents to distribute among the pilots they cover: *Public Innovation Pilots*, *Urban Experimentation Projects*, and *Collaborative Regional Platform* (the TC's official name). | Juan | stage 2 status `umbrella_not_a_pilot` (E085 through `data/team_decisions_overrides.csv`); stage 3 screens their documents |
+| 2026-11-02 | RG-T4182 contains 4 pilots: Quito (Proyecto Yaku), San Salvador (Geothermal Climate Prototype), Renca, and Providencia. Water Consumption Reduction in Buildings corresponds to Renca. Juan believes Providencia overlaps with Urban Tree Detection, but this is not yet checked (see open items). | Juan | open items |
 | 2026-11-02 | The reviewer of each pilot depends on the pilot (Juan, Eli, Rober, Angie or Toni). It is recorded per pilot, with no fixed assignment. | Juan | `reviewer` column in the registry |
 
 ## 2. Stage 1 — text, duplicates, versions (`stage1_extract.py`)
@@ -83,15 +84,15 @@ Result: **92 entities.**
 
 | Status | Entities |
 |---|---|
-| confirmed | 29 |
+| confirmed | 28 |
 | to_review | 57 |
-| umbrella_not_a_pilot | 2 |
+| umbrella_not_a_pilot | 3 |
 | doubtful_files | 1 |
 | ongoing | 1 |
 | not_started | 1 |
 | never_happened | 1 |
 
-`in_retro_scope` is true for the 29 confirmed.
+`in_retro_scope` is true for the 28 confirmed. There were 29 ✓ entries, but *Collaborative Regional Platform* turned out to be the HUB TC itself.
 
 **Duplicate candidates.** For every pair of entries, the script computes:
 
@@ -117,9 +118,9 @@ The misses are merges whose documents share neither names nor content, for examp
 
 ## 4. Stage 3 — screening of unvalidated entries (`stage3_screen_unreviewed.py`)
 
-**Question asked.** For each document filed under an unvalidated entry (“?”, doubtful or umbrella): does its content belong to one or more of the validated pilots? The stage does not ask whether the entry is a pilot of its own.
+**Question asked.** For each document filed under an unvalidated entry (“?”, doubtful or HUB-level): does its content belong to one or more of the validated pilots? The stage does not ask whether the entry is a pilot of its own.
 
-**Profiles (3a).** The model needs to recognise a validated pilot even when a document never uses the registry name, so each of the 30 validated pilots (29 confirmed plus the ongoing one) gets a profile. The profile is built in one API call from:
+**Profiles (3a).** The model needs to recognise a validated pilot even when a document never uses the registry name, so each of the 29 validated pilots (28 confirmed plus the ongoing one) gets a profile. The profile is built in one API call from:
 
 - the pilot's registry metadata;
 - up to 3 of its own documents, ranked final report > deliverable > progress report > presentation > work plan > TOR;
@@ -143,18 +144,29 @@ The model returns a Spanish `summary`, up to 15 `key_terms` and `period` through
   - stays out of scope.
 - **Reassignments:** primary and section matches only, with an empty `team_decision` column. Stage 4 builds the knowledge bases with the accepted moves.
 
-**Size (dry run, 2026-11-02).** 30 profile calls (about 127k input tokens) and 153 screening calls (about 604k document tokens, plus a catalog of about 6k tokens cached across calls). The default model is `claude-sonnet-5-5`; it can be changed with `--model` or the `CLAB_MODEL` variable.
+**Size (dry run, 2026-11-02).** 29 profile calls (about 125k input tokens) and 154 screening calls (about 607k document tokens, plus a catalog of about 6k tokens cached across calls). The default model is `claude-sonnet-5-5`; it can be changed with `--model` or the `CLAB_MODEL` variable.
 
 **Caching and resumption.** Every answer is appended to `out/screening/responses.jsonl` under a key that hashes the prompt, the catalog, the document text and the model. A re-run only calls what changed. `--mock` runs the whole stage with a fake model and writes nothing to the real cache.
 
 **Testing done.**
 
-- `--dry-run` and `--mock` were run end to end on the full corpus: 153 documents, quote verification and the Excel output.
+- `--dry-run` and `--mock` were run end to end on the full corpus: 153–154 documents, quote verification and the Excel output.
 - The live API path was not run from the development environment, because it needs Juan's key. Run it first with `--limit 5`.
 
 ## 5. Open items
 
-- [ ] Name the 4 pilots of RG-T4182. Six RG-T4182 entries are marked ✓ (Urban Tree Detection, Urban Oasis Colonia Bethania, Water Consumption Reduction in Buildings, Collaborative Regional Platform, Geothermal Climate Prototype, Proyecto Yaku). Either 2 of them belong elsewhere, or the 4 refers to the BPR pilots only. The HUB-level documents mention Quito, San Salvador, Renca and Providencia.
+- [ ] **RG-T4182: what the documents say about Providencia.** This contradicts the working assumption that Providencia is the tree-detection pilot.
+    - The HUB's process evaluation (*4. Informe Pilotos V1.docx*, filed under *Public Innovation Pilots*) lists exactly 4 pilots:
+        1. YAKU, Quito;
+        2. Geotermia, San Salvador;
+        3. Gestión Hídrica y Uso Eficiente del Agua in Renca, at Condominio Vista Hermosa (social housing);
+        4. Gestión Hídrica y Uso Eficiente del Agua in Providencia, in a municipal building.
+    - The *Water Consumption Reduction in Buildings* documents cover both communes. For example, the behavioural consultancy reports on schools in Renca and Providencia, and Roberto Madera's follow-up products say "Comunas de Renca y Providencia".
+    - No document in the corpus links tree detection to Providencia.
+    - The consultant reports filed under the Tandil and Amazon tree pilots list the BPR work as "Piloto en Renca y Providencia" and "Piloto en Guatemala".
+    - **To decide:**
+        - whether Providencia becomes its own pilot, split from *Water Consumption Reduction in Buildings*, which would then cover Renca only;
+        - what *Urban Tree Detection* (Belém, San José del Guaviare) and *Urban Oasis Colonia Bethania* (Guatemala City), both filed under RG-T4182, are relative to the HUB.
 - [ ] Big Data for Smart Cities (BR-T1496, 51 documents) holds proofs of concept per city and theme. Decide whether it is one pilot or several. It is not validated, so it is out of scope unless the team validates it.
 - [ ] Electric Micromobility Pilot (Quito): the team suspects its files belong to San Telmo (Buenos Aires) and green roofs (San Salvador). Stage 3 screens them.
 - [ ] Before stage 6: source of the exchange rates used to convert costs to USD.
