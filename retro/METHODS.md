@@ -130,13 +130,13 @@ The misses are merges whose documents share neither names nor content, for examp
 - up to 3 of its own documents, ranked final report > deliverable > progress report > presentation > work plan > TOR;
 - the first 6,000 characters of each.
 
-The model returns a Spanish `summary`, up to 15 `key_terms` and `period` through a forced tool call (`record_profile`). The prompt is `prompts/profile_system.md`. Profiles are cached in `out/screening/profiles.json`.
+The model returns a Spanish `summary`, up to 15 `key_terms` and `period` as JSON constrained by a schema (`record_profile`; see *API call* below). The prompt is `prompts/profile_system.md`. Profiles are cached in `out/screening/profiles.json`.
 
 **Screening (3b).** One call per distinct document. Each copy is screened once, through its cluster representative. The call has three parts:
 
 - **System prompt:** `prompts/screen_system.md` plus the catalog of profiles. It is identical across calls and marked for prompt caching.
 - **User turn:** the entries the document is filed under, the TC, the file name, and the text with `[page n]` / `[slide n]` / `[block n]` markers. Documents longer than 24,000 characters send the first 75% and the last 25% of that budget (the conclusions), with `[... omitted ...]` between them.
-- **Answer:** a forced tool call (`record_screening`) with `verdict` (one of 5 values), `matches` (pilot, role primary/section/mention, confidence, verbatim quote, location), `document_subject` and `rationale`.
+- **Answer:** JSON constrained by a schema (`record_screening`) with `verdict` (one of 5 values), `matches` (pilot, role primary/section/mention, confidence, verbatim quote, location), `document_subject` and `rationale`.
 
 **Verification.** Each quote is searched in the document's full text, after normalising case, whitespace and hyphenation. A quote that is not found is shown as `[NOT FOUND IN TEXT]` and counted in `unverified_quotes`. It is never accepted silently.
 
@@ -152,10 +152,18 @@ The model returns a Spanish `summary`, up to 15 `key_terms` and `period` through
 
 **Caching and resumption.** Every answer is appended to `out/screening/responses.jsonl` under a key that hashes the prompt, the catalog, the document text and the model. A re-run only calls what changed. `--mock` runs the whole stage with a fake model and writes nothing to the real cache.
 
+**API call.** Requests go to the Messages API with structured outputs: `output_config.format` = `json_schema`.
+
+- Every object in the schema gets `additionalProperties: false`, and unsupported numeric and array constraints are removed (`strict_schema()`). Confidence is clamped to 0–1 in code.
+- The first version forced a tool call. Claude Sonnet 5.5 rejects that with error 400 (*tool_choice: type "tool" and "any" are not supported for this model*), so it was replaced on 2026-11-02, following the [Sonnet 5.5 migration guide](https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide).
+- Sonnet 5.5 thinks adaptively by default. `--effort` (`medium` by default) controls how much it thinks, and `--max-tokens` (16,000 by default) covers thinking plus the answer.
+- Refusals and truncated answers raise a clear error. A call that fails is reported and left uncached, so the next run retries it. Profiles must be complete before screening starts.
+
 **Testing done.**
 
 - `--dry-run` and `--mock` were run end to end on the full corpus: 153–154 documents, quote verification and the Excel output.
-- The live API path was not run from the development environment, because it needs Juan's key. Run it first with `--limit 5`.
+- `tests/test_stage3_api_shape.py` checks the request sent to the API offline: no tools, a valid strict schema, prompt caching on the system prompt, parsing of the answer and clamping of confidence.
+- First live run (2026-11-02, Juan's machine, `--limit 5`): error 400 on forced tool calls, fixed as described above.
 
 ## 5. Open items
 

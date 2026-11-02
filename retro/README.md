@@ -47,6 +47,8 @@ python stage3_screen_unreviewed.py --out out --limit 5     # try 5 documents
 python stage3_screen_unreviewed.py --out out               # full run; re-running resumes and only calls what changed
 ```
 
+Offline test of the API request (no key needed): `python tests/test_stage3_api_shape.py`.
+
 Every stage can be re-run safely. Stage 1 reuses extracted text. Stage 3 keeps its API answers in `out/screening/` and only repeats a call when the document, the prompt or the model changes.
 
 ## What the team edits
