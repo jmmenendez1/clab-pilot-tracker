@@ -54,7 +54,8 @@ Every stage can be re-run safely. Stage 1 reuses extracted text. Stage 3 keeps i
 | File | Purpose |
 |---|---|
 | Repository workbook, columns *Review* / *Notes* | Binding decisions: ✓, redundant → target, never happened, not started, ongoing. Stage 2 parses them. |
-| `data/team_decisions_overrides.csv` | Corrections where the parser misread a note. One row per entry, with a `comment` explaining why. |
+| `data/team_decisions_overrides.csv` | Corrections where the parser misread a note, and decisions taken after the repository was reviewed. One row per entry, with a `comment` explaining why. |
+| `data/pilot_splits.csv` | One repository entry that is really two pilots, e.g. Renca and Providencia. |
 | `out/pilot_registry.xlsx` → `final_decision`, `reviewer` | Decisions on the duplicate candidates. |
 | `out/screening_unreviewed.xlsx` → `team_decision` | Accept or reject each proposed document move. |
 
