@@ -158,6 +158,7 @@ The model returns a Spanish `summary`, up to 15 `key_terms` and `period` as JSON
 - Every object in the schema gets `additionalProperties: false`, and unsupported numeric and array constraints are removed (`strict_schema()`). Confidence is clamped to 0–1 in code.
 - The first version forced a tool call. Claude Sonnet 5.5 rejects that with error 400 (*tool_choice: type "tool" and "any" are not supported for this model*), so it was replaced on 2026-11-02, following the [Sonnet 5.5 migration guide](https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide).
 - Sonnet 5.5 thinks adaptively by default. `--effort` (`medium` by default) controls how much it thinks, and `--max-tokens` (16,000 by default) covers thinking plus the answer.
+- Requests are streamed (`messages.stream` → `get_final_message()`). On 2026-11-03 stage 5's first live run failed on every pilot because the SDK refuses non-streaming requests whose `max_tokens` (32,000) could take over 10 minutes (*Streaming is required for operations that may take longer than 10 minutes*). Streaming is the SDK's recommended route for long requests and also keeps the connection alive on slow networks. Stages 3 and 5 share this code.
 - Refusals and truncated answers raise a clear error. A call that fails is reported and left uncached, so the next run retries it. Profiles must be complete before screening starts.
 
 **Testing done.**

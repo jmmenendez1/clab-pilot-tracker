@@ -204,13 +204,16 @@ class Model:
         output_config = {"format": {"type": "json_schema", "schema": strict_schema(tool["input_schema"])}}
         if self.effort:
             output_config["effort"] = self.effort
-        resp = self.client.messages.create(
+        # Streamed: the SDK refuses non-streaming requests whose max_tokens could take over 10 minutes
+        # (stage 5 uses 32k), and a stream also keeps the connection alive on slow networks.
+        with self.client.messages.stream(
             model=self.model,
             max_tokens=self.max_tokens,
             system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
             output_config=output_config,
             messages=[{"role": "user", "content": user}],
-        )
+        ) as stream:
+            resp = stream.get_final_message()
         if resp.stop_reason == "refusal":
             raise RuntimeError(f"model refused (request {getattr(resp, '_request_id', '')})")
         if resp.stop_reason == "max_tokens":

@@ -19,10 +19,10 @@ What each stage does and why, the parameters, the validation results and the tea
 
 ```powershell
 cd retro
-python -m venv .venv
-.venv\Scripts\activate
 pip install -r requirements.txt
 ```
+
+A virtual environment is optional. If you want one, create it once with `python -m venv .venv` and activate it in each new window with `.venv\Scripts\activate`; without it, the packages go into your main Python and no activation step is needed.
 
 - **OCR is optional.** Scanned PDF pages are read with Tesseract (languages `spa`, `por`, `eng`). Without it, those pages come out empty and `documents.csv` reports them. To skip OCR altogether, unzip the shared `text_cache.zip` into `out/` before stage 1: stage 1 reuses every text it finds there.
 - **Long paths are handled.** Stage 1 adds the `\\?\` prefix on Windows, because OneDrive paths exceed the 260-character limit.

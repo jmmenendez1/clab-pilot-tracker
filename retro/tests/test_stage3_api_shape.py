@@ -40,6 +40,24 @@ class FakeMessages:
         content = [SimpleNamespace(type="thinking", thinking="..."), SimpleNamespace(type="text", text=json.dumps(self.answer))]
         return SimpleNamespace(content=content, usage=usage, stop_reason="end_turn")
 
+    def stream(self, **kw):
+        return FakeStream(self.create(**kw))
+
+
+class FakeStream:
+    """Stands in for the SDK's MessageStreamManager: context manager with get_final_message()."""
+    def __init__(self, message):
+        self.message = message
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def get_final_message(self):
+        return self.message
+
 
 def main():
     for tool in (s3.PROFILE_TOOL, s3.SCREEN_TOOL):

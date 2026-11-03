@@ -14,7 +14,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import stage5_extract as s5  # noqa: E402
 from stage3_screen_unreviewed import Model, strict_schema  # noqa: E402
-from tests.test_stage3_api_shape import walk  # noqa: E402
+from tests.test_stage3_api_shape import FakeStream, walk  # noqa: E402
 
 out, pid = Path(sys.argv[1]), sys.argv[2]
 corpus = (out / "kb" / pid / "corpus.md").read_text(encoding="utf-8")
@@ -51,6 +51,9 @@ class Fake:
                                                              "note": "", "confidence": 0.7, "evidence": ev}]}]
         usage = SimpleNamespace(input_tokens=1, output_tokens=1, cache_creation_input_tokens=0, cache_read_input_tokens=0)
         return SimpleNamespace(content=[SimpleNamespace(type="text", text=json.dumps(ans))], usage=usage, stop_reason="end_turn")
+
+    def stream(self, **kw):
+        return FakeStream(self.create(**kw))
 
 
 model = Model("claude-sonnet-5-5", mock=True)
