@@ -509,6 +509,14 @@ def main():
 
     print("[3/3] verifying quotes and aggregating")
     E, B, M = aggregate(results, R)
+    # The team records its decisions in out/document_reassignments.csv (column team_decision: empty = accept by
+    # default, "reject" = exclude). A re-run must never erase them: carry them over by (document, source, target).
+    sfx = "_mock" if a.mock else ""  # a mock run never touches the real outputs or the team decisions
+    dec_path = out / f"document_reassignments{sfx}.csv"
+    if dec_path.exists() and len(M):
+        old = pd.read_csv(dec_path, dtype=str).fillna("")
+        prev = {(r.cluster_id, r.from_entry, r.to_pilot): r.team_decision for r in old.itertuples()}
+        M["team_decision"] = [prev.get((c, f, t), "") for c, f, t in zip(M.cluster_id, M.from_entry, M.to_pilot)]
     Pf = pd.DataFrame([{"pilot_id": k, "name": v["name"], "tcs": v["tcs"], "cities": v["cities"], "summary": v["summary"],
                         "key_terms": ", ".join(v["key_terms"]), "period": v["period"], "docs_used": v.get("n_docs_used", "")}
                        for k, v in sorted(profiles.items())])
@@ -524,11 +532,11 @@ def main():
         "Scope (team decision 2026-11-02): only validated pilots are evaluated; this screening only recovers their misfiled documents.",
         "ByEntity: one row per unvalidated entry with the proposal. Fill team_decision.",
         "ByDocument: the model's verdict per document with the verbatim evidence; [NOT FOUND IN TEXT] marks quotes that failed verification.",
-        "Reassignments: proposed moves (primary/section matches only). Fill team_decision (accept / reject); the knowledge base (stage 4) applies the accepted ones.",
+        "Reassignments: proposed moves (primary/section matches only). Team decisions live in out/document_reassignments.csv (team_decision: empty = accepted by default, 'reject' = excluded); re-runs keep them. Stage 4 applies them.",
         "Profiles: the catalog of validated pilots the model compared against (built from each pilot's own documents).",
         "Run: model, prompt versions, token usage. Raw answers: screening/responses.jsonl.",
     ]})
-    xlsx = out / "screening_unreviewed.xlsx"
+    xlsx = out / f"screening_unreviewed{sfx}.xlsx"
     with pd.ExcelWriter(xlsx, engine="openpyxl") as w:
         readme.to_excel(w, sheet_name="README", index=False)
         E.to_excel(w, sheet_name="ByEntity", index=False)
@@ -537,7 +545,7 @@ def main():
         Pf.to_excel(w, sheet_name="Profiles", index=False)
         run.to_excel(w, sheet_name="Run", index=False)
     style(xlsx)
-    M.to_csv(out / "document_reassignments.csv", index=False, encoding="utf-8-sig")
+    M.to_csv(dec_path, index=False, encoding="utf-8-sig")
     print(f"done: {len(results)} documents, {int((E.documents_matched > 0).sum()) if len(E) else 0} entries with documents of validated pilots, "
           f"{len(M)} proposed moves -> {xlsx}")
     print("usage:", model.usage)

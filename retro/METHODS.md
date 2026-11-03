@@ -14,6 +14,7 @@ This file records what each stage of the retrospective pipeline does, the parame
 | 2026-11-02 | RG-T4182 contains 4 pilots: Quito (Proyecto Yaku), San Salvador (Geothermal Climate Prototype), Renca, and Providencia. Water Consumption Reduction in Buildings corresponds to Renca. Juan believes Providencia overlaps with Urban Tree Detection, but this is not yet checked. | Juan | see next rows |
 | 2026-11-02 | **Providencia is split out** as its own pilot, *Water Management Pilot Providencia* (`CLAB-P-201`). *Water Consumption Reduction in Buildings* (`CLAB-P-081`) becomes Renca. The documents that cover both communes belong to both pilots. The basis is the HUB process evaluation, which lists Renca and Providencia as separate pilots. | Juan | `data/pilot_splits.csv` → stage 2 |
 | 2026-11-02 | *Urban Tree Detection* and *Urban Oasis Colonia Bethania* stay as validated pilots with no change. Whatever their documents do not cover is recorded as gaps, and the team reviews them later. | Juan | no change; stage 5 fills gaps as `no_evidence` |
+| 2026-11-03 | Stage 3's proposed document moves are **accepted by default**. The team only marks `reject` where a move is wrong. | Juan | `out/document_reassignments.csv` → stage 4 |
 | 2026-11-02 | The reviewer of each pilot depends on the pilot (Juan, Eli, Rober, Angie or Toni). It is recorded per pilot, with no fixed assignment. | Juan | `reviewer` column in the registry |
 
 ## 2. Stage 1 — text, duplicates, versions (`stage1_extract.py`)
@@ -190,7 +191,30 @@ The model returns a Spanish `summary`, up to 15 `key_terms` and `period` as JSON
 - *Electric Micromobility Pilot* (doubtful) holds Roberto Madera's dissemination materials (Producto 4). They have sections on the Quito last-mile pilot and the Montevideo children's diagnosis, and nothing on micromobility.
 - **Renca / Providencia.** The selection report (*Producto1_SeleccionPilotosBPR*) and Madera's Producto 3 describe a single joint proposal, “Santiago 2030 con Agua”. The HUB process evaluation lists them as two pilots, consistent with the 2026-11-03 split.
 
-## 5. Open items
+## 5. Stage 4 — knowledge base per pilot (`stage4_knowledge_base.py`)
+
+**Scope.** The 29 pilots with `in_retro_scope = true`. San José is ongoing and is handled prospectively, so it is not included.
+
+**Content of each knowledge base (`out/kb/<pilot_id>/`):**
+
+- **Own documents.** Every document cluster filed under the pilot, read through its representative. This includes documents shared through a split. Documents are ordered: final report, deliverables, progress reports, presentations, work plan, TOR, media, then agreements, affidavits and invoices. Invoices are kept because they carry cost figures for L2.1.
+- **Recovered sections.** Stage 3 moves to the pilot that the team has not rejected. A multi-pilot report has a section on this pilot next to sections on other pilots, so only part of it is kept:
+    - the unit cited by the screening evidence;
+    - every unit that contains one of the pilot's distinctive terms;
+    - the neighbouring unit on each side of those;
+    - up to `--section-units` (8) core units.
+
+    A distinctive term is a key term from the stage-3 profile, or the pilot's city, that appears in **no other** validated pilot's profile. Shared names (consultants, TC codes, "Cities LAB") are dropped, because they would pull in other pilots' sections. Most progress reports are 4–10 pages, so in practice the kept part is the cited page and its neighbours.
+- **`corpus.md`** is the text stage 5 reads. Every unit is headed `[doc_id · page n]`, so evidence can be cited down to the page.
+- **`manifest.json`** records, per document: its source (own or recovered), role, units kept, term hits and screening evidence.
+
+**Result (2026-11-03, on the full stage-3 output):**
+
+- 29 knowledge bases, with 118 own documents and 103 recovered sections.
+- Estimated size ranges from 4k tokens (*Stairways Requalification Sao Paulo*) to 222k (*Sustainability Corridors Pilot*), using 3.3 characters per token, the rate measured on stage-3 calls.
+- Two pilots exceed the 150k-token context budget: *Sustainability Corridors* (222k) and *Respira Lima* (178k, which includes the merged Clean Air Routes reports). Stage 5 has to retrieve chunks for these two instead of sending the whole corpus.
+
+## 6. Open items
 
 - [x] RG-T4182, Providencia. The HUB process evaluation (*4. Informe Pilotos V1.docx*) lists four pilots:
     1. YAKU, in Quito;

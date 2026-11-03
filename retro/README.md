@@ -8,9 +8,9 @@ What each stage does and why, the parameters, the validation results and the tea
 |---|---|---|---|---|
 | 1 | `stage1_extract.py` | `downloads_pilots/` | full text per document, duplicates and versions (`out/documents.csv`, `out/text/`) | done |
 | 2 | `stage2_registry.py` | repository workbook (Review / Notes) + stage 1 | `out/pilot_registry.xlsx` | done; awaiting team review |
-| 3 | `stage3_screen_unreviewed.py` | stage 2 + Anthropic API | `out/screening_unreviewed.xlsx`, `out/document_reassignments.csv` | ready to run |
-| 4 | knowledge base per pilot | stages 2–3 after team review | `out/kb/<pilot_id>/` | next |
-| 5 | framework extraction | stage 4 + catalog | one JSON per pilot | planned |
+| 3 | `stage3_screen_unreviewed.py` | stage 2 + Anthropic API | `out/screening_unreviewed.xlsx`, `out/document_reassignments.csv` | done (2026-11-03) |
+| 4 | `stage4_knowledge_base.py` | stages 2–3 (+ team rejections) | `out/kb/<pilot_id>/manifest.json`, `corpus.md`, `out/kb/kb_summary.csv` | ready to run |
+| 5 | framework extraction | stage 4 + catalog | one JSON per pilot | next |
 | 6 | loader into the tracker | stage 5 | rows in Supabase | planned |
 
 ## Setup (Windows, once)
@@ -45,6 +45,9 @@ python stage2_registry.py --repo "<path>\clab_pilot_repository.xlsx" --stage1 ou
 python stage3_screen_unreviewed.py --out out --dry-run     # what would be sent, token estimate, no API call
 python stage3_screen_unreviewed.py --out out --limit 5     # try 5 documents
 python stage3_screen_unreviewed.py --out out               # full run; re-running resumes and only calls what changed
+
+# Stage 4 - one knowledge base per validated pilot (no API calls, seconds)
+python stage4_knowledge_base.py --out out
 ```
 
 Offline test of the API request (no key needed): `python tests/test_stage3_api_shape.py`.
@@ -59,7 +62,7 @@ Every stage can be re-run safely. Stage 1 reuses extracted text. Stage 3 keeps i
 | `data/team_decisions_overrides.csv` | Corrections where the parser misread a note, and decisions taken after the repository was reviewed. One row per entry, with a `comment` explaining why. |
 | `data/pilot_splits.csv` | One repository entry that is really two pilots, e.g. Renca and Providencia. |
 | `out/pilot_registry.xlsx` → `final_decision`, `reviewer` | Decisions on the duplicate candidates. |
-| `out/screening_unreviewed.xlsx` → `team_decision` | Accept or reject each proposed document move. |
+| `out/document_reassignments.csv` → `team_decision` | Proposed document moves from stage 3. **Empty = accepted** (decision 2026-11-03); write `reject` to exclude one. Re-running stage 3 keeps these decisions. |
 
 ## Data policy
 
