@@ -164,6 +164,11 @@ The model returns a Spanish `summary`, up to 15 `key_terms` and `period` as JSON
 - `--dry-run` and `--mock` were run end to end on the full corpus: 153–154 documents, quote verification and the Excel output.
 - `tests/test_stage3_api_shape.py` checks the request sent to the API offline: no tools, a valid strict schema, prompt caching on the system prompt, parsing of the answer and clamping of confidence.
 - First live run (2026-11-02, Juan's machine, `--limit 5`): error 400 on forced tool calls, fixed as described above.
+- Second live run (2026-11-03, `--limit 5`): 30 profiles and 5 documents, all 5 correctly judged `unrelated_to_validated_pilots` (São Luís data diagnostics under BR-T1496).
+    - Usage: 35 calls; 190k input tokens; 63k tokens written to cache and 32k read from it; 13k output tokens.
+    - The real catalog is about 15k tokens. The dry-run estimate (6k) undercounts it because it uses placeholder summaries.
+    - Four of the 5 screening calls each wrote the catalog to the cache because they started in parallel. Since then the first uncached call runs alone to warm the cache.
+- The profiles were reviewed on 2026-11-03. *Bairro Conectado Terminal Sapopemba* (`CLAB-P-099`) and *Stairways Requalification Sao Paulo* (`CLAB-P-103`) describe the same consultancy, on stairway requalification in Sapopemba. Both are validated (✓). Whether they are one pilot or two is listed as an open item.
 
 ## 5. Open items
 
@@ -175,6 +180,7 @@ The model returns a Spanish `summary`, up to 15 `key_terms` and `period` as JSON
 
     The corpus has no document linking tree detection to Providencia. Resolved: Providencia is split from Renca (see the decision log).
 - [ ] With the team: what *Urban Tree Detection* (Belém, San José del Guaviare) and *Urban Oasis Colonia Bethania* (Guatemala City) are relative to RG-T4182. Consultant reports list the HUB work as "Piloto en Renca y Providencia" and "Piloto en Guatemala". Both stay in scope for now, with whatever gaps their documents leave.
+- [ ] With the team: *Bairro Conectado Terminal Sapopemba* (`CLAB-P-099`, 3 documents) and *Stairways Requalification Sao Paulo* (`CLAB-P-103`, 1 document, a work plan) describe the same SMUL/C40 consultancy on stairway requalification in Sapopemba. Are they one pilot or two?
 - [ ] Big Data for Smart Cities (BR-T1496, 51 documents) holds proofs of concept per city and theme. Decide whether it is one pilot or several. It is not validated, so it is out of scope unless the team validates it.
 - [ ] Electric Micromobility Pilot (Quito): the team suspects its files belong to San Telmo (Buenos Aires) and green roofs (San Salvador). Stage 3 screens them.
 - [ ] Before stage 6: source of the exchange rates used to convert costs to USD.

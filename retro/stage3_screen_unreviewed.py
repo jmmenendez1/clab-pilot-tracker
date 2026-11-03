@@ -369,6 +369,15 @@ def screen(model, R, D, profiles, text_dir, out_dir, max_chars, workers, limit, 
         return rec
 
     results = []
+    # Warm the prompt cache with one call before going parallel: otherwise every worker that starts at the same
+    # time writes the ~15k-token catalog to the cache (first live run: 4 of 5 calls paid the cache write).
+    pending = [j for j in jobs if j["key"] not in done]
+    if pending and not model.mock:
+        try:
+            results.append(run(pending[0]))
+        except Exception as e:
+            print(f"  ! a document failed: {e}", flush=True)
+        jobs = [j for j in jobs if j is not pending[0]]
     with ThreadPoolExecutor(workers) as ex:
         futs = [ex.submit(run, j) for j in jobs]
         for k, fu in enumerate(as_completed(futs), 1):
