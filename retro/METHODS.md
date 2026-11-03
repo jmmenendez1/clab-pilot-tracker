@@ -170,6 +170,26 @@ The model returns a Spanish `summary`, up to 15 `key_terms` and `period` as JSON
     - Four of the 5 screening calls each wrote the catalog to the cache because they started in parallel. Since then the first uncached call runs alone to warm the cache.
 - The profiles were reviewed on 2026-11-03. *Bairro Conectado Terminal Sapopemba* (`CLAB-P-099`) and *Stairways Requalification Sao Paulo* (`CLAB-P-103`) describe the same consultancy, on stairway requalification in Sapopemba. Both are validated (✓). Whether they are one pilot or two is listed as an open item.
 
+**Full run (2026-11-03).**
+
+| Measure | Result |
+|---|---|
+| Documents screened | 154 |
+| `unrelated_to_validated_pilots` | 125 |
+| `covers_several_pilots` | 25 |
+| `mentions_validated_pilot_only` | 4 |
+| `belongs_to_validated_pilot` | 0 |
+| Proposed moves | 109 (all `section`, all 109 quotes verified in the text) |
+| Validated pilots that receive documents | 25 of 30 |
+| Usage | 149 calls; 880k input tokens; 15k tokens written to cache, 2.22M read from it; 47k output tokens |
+
+- **No unvalidated entry turned out to be a misfiled validated pilot.** What the screening recovers is multi-pilot documents: consultant progress reports (Data Science lead, IT consultant, Scetta), Roberto Madera's products, and the HUB documents. Each has sections on validated pilots.
+- Several unvalidated entries are such reports filed under a pilot-like name. Examples: *Rutas Limpias Waste Collection Pilot* holds Antonio Vázquez Brust's progress reports 1–3, and *Digital Tool for Amazonian Cities* holds 7 monthly reports that together cover 15 validated pilots.
+- The pilots that gain the most are *Automated Tree Inventory* (14 documents), *Smart Cities Pilot Tres de Febrero*, *Citizen Services Catalog* and *Land Identification Platform Cuenca* (9 each).
+- Five pilots receive nothing: Tactical Urbanism Santo Domingo, Climate Shelters Belo Horizonte, Construction with Recycled Polymer Bales, Bairro Conectado Terminal Sapopemba and Stairways Requalification Sao Paulo.
+- *Electric Micromobility Pilot* (doubtful) holds Roberto Madera's dissemination materials (Producto 4). They have sections on the Quito last-mile pilot and the Montevideo children's diagnosis, and nothing on micromobility.
+- **Renca / Providencia.** The selection report (*Producto1_SeleccionPilotosBPR*) and Madera's Producto 3 describe a single joint proposal, “Santiago 2030 con Agua”. The HUB process evaluation lists them as two pilots, consistent with the 2026-11-03 split.
+
 ## 5. Open items
 
 - [x] RG-T4182, Providencia. The HUB process evaluation (*4. Informe Pilotos V1.docx*) lists four pilots:
