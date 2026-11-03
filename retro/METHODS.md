@@ -214,7 +214,51 @@ The model returns a Spanish `summary`, up to 15 `key_terms` and `period` as JSON
 - Estimated size ranges from 4k tokens (*Stairways Requalification Sao Paulo*) to 222k (*Sustainability Corridors Pilot*), using 3.3 characters per token, the rate measured on stage-3 calls.
 - Two pilots exceed the 150k-token context budget: *Sustainability Corridors* (222k) and *Respira Lima* (178k, which includes the merged Clean Air Routes reports). Stage 5 has to retrieve chunks for these two instead of sending the whole corpus.
 
-## 6. Open items
+## 6. Stage 5 — framework extraction and calibration
+
+### 5a. Reference evaluations (`stage5_gold_workbooks.py`)
+
+This script reads the five workbooks Sabrina completed by hand: Geothermal, Yaku, Montería, Sustainability Corridors and Last Mile. They are mapped to `pilot_id` in `data/gold_workbooks.csv`.
+
+- The reader is a Python port of the tracker's in-app importer (`web/import.js`). It uses the same cover labels, the same stage tabs, and the same rule that the latest non-empty value across tabs wins. Degrees are normalised to high/medium/low/na, NA-like text becomes `no_evidence`, L2.1 is kept as free text, and L3.2 gets one hypothesis per distinct "Impact (n)" label.
+- `tests/test_gold_parity.py` runs both importers on the same files and compares every value. All five workbooks match.
+- The comparison found one difference, which was fixed. A year typed into a date cell, such as "2022" in Last Mile, is read by openpyxl as 1905-07-14. It is now converted back to the year, as the JS importer does.
+
+### 5b. Extraction (`stage5_extract.py`, prompt `prompts/extract_system.md`)
+
+- **Checklist.** It is generated from `catalog/framework_catalog.json`: definition, guiding questions, field types, enum options and `applies_to`. "Notes" fields are not requested, because each entry carries its own `note`.
+    - The cover asks for: pilot_type, city, country, problem_definition, target_population, lead, counterpart and the two dates.
+    - L2.1 asks for cost line items (original amount, currency, year, subcategory, what it covers), plus `opex.period` and `funding_note`. Conversion to USD and totals are left to code, never to the model.
+    - L3.2 asks for at most 4 hypotheses, each with the 10 hypothesis fields.
+- **Calls.** There are four calls per pilot: cover + L1, L2, L3, L4. The system prompt is the instructions plus the pilot's `corpus.md`, prompt-cached, so the corpus is paid once and read three times. Answers are JSON constrained by a schema, and every entry has status, value, note, confidence and evidence (doc_id, location, verbatim quote).
+- **Reading budget.** `--budget` defaults to 150k tokens. Documents go in knowledge-base order (final reports first). Beyond the budget the next document is cut and the rest are omitted. The corpus itself tells the model what was left out, and the output lists it.
+    - Only *Sustainability Corridors* (222k) and *Respira Lima* (178k) exceed the budget.
+    - For Sustainability Corridors this means the technical proposal is cut and 6 documents are omitted.
+- **Checks in code:**
+    - every requested field is present; a missing one becomes `no_evidence`, flagged `missing_in_answer`;
+    - enum values and ISO dates are validated;
+    - every quote is searched in the cited document, and the doc_id is corrected if the quote is found in another document; unfound quotes are flagged and never dropped silently;
+    - a gap must come with a note;
+    - a filled field must have evidence;
+    - a dimension that does not apply to the extracted pilot type is flagged;
+    - confidence is clamped to 0–1.
+- **Stage.** Each response is stored at the last stage where the catalog lists that field (the rule from the plan). Raw answers are cached per pilot and level.
+- **Tested offline.** `tests/test_stage5_offline.py` uses a fake model whose answers include a verbatim quote, an invented quote, an invalid degree, a gap without a note and omitted fields, and checks that each case is detected. `--mock` runs the whole stage and the comparison end to end.
+- **Calibration size (dry run, 2026-11-03).** The 5 pilots send about 294k corpus tokens, each written to the cache once and read three times.
+
+### 5c. Comparison (`stage5_compare.py`)
+
+`out/calibration.xlsx` compares, per field:
+
+- status, where filled vs not filled agrees when both filled or both left a gap;
+- degrees, as an exact match and as a match within one step;
+- hypotheses, texts side by side;
+- costs, the workbook's text against the extractor's line items;
+- the cover fields.
+
+Text fields are not scored automatically. They appear side by side with the extractor's evidence, and a person records in a `review` column which side is right. The workbooks are a reference, not ground truth: the SPEC already lists corrections for them (currency, classification, counterfactual wording).
+
+## 7. Open items
 
 - [x] RG-T4182, Providencia. The HUB process evaluation (*4. Informe Pilotos V1.docx*) lists four pilots:
     1. YAKU, in Quito;

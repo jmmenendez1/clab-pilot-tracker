@@ -9,8 +9,10 @@ What each stage does and why, the parameters, the validation results and the tea
 | 1 | `stage1_extract.py` | `downloads_pilots/` | full text per document, duplicates and versions (`out/documents.csv`, `out/text/`) | done |
 | 2 | `stage2_registry.py` | repository workbook (Review / Notes) + stage 1 | `out/pilot_registry.xlsx` | done; awaiting team review |
 | 3 | `stage3_screen_unreviewed.py` | stage 2 + Anthropic API | `out/screening_unreviewed.xlsx`, `out/document_reassignments.csv` | done (2026-11-03) |
-| 4 | `stage4_knowledge_base.py` | stages 2–3 (+ team rejections) | `out/kb/<pilot_id>/manifest.json`, `corpus.md`, `out/kb/kb_summary.csv` | ready to run |
-| 5 | framework extraction | stage 4 + catalog | one JSON per pilot | next |
+| 4 | `stage4_knowledge_base.py` | stages 2–3 (+ team rejections) | `out/kb/<pilot_id>/manifest.json`, `corpus.md`, `out/kb/kb_summary.csv` | done (2026-11-03) |
+| 5a | `stage5_gold_workbooks.py` | hand-made evaluation workbooks | `out/gold/<pilot_id>.json` | ready |
+| 5b | `stage5_extract.py` | stage 4 + catalog + Anthropic API | `out/extraction/<pilot_id>.json` | ready; calibrate first |
+| 5c | `stage5_compare.py` | 5a + 5b | `out/calibration.xlsx` | ready |
 | 6 | loader into the tracker | stage 5 | rows in Supabase | planned |
 
 ## Setup (Windows, once)
@@ -48,9 +50,16 @@ python stage3_screen_unreviewed.py --out out               # full run; re-runnin
 
 # Stage 4 - one knowledge base per validated pilot (no API calls, seconds)
 python stage4_knowledge_base.py --out out
+
+# Stage 5 - calibration on the 5 hand-made workbooks, then all pilots
+python stage5_gold_workbooks.py --out out --workbooks gold_workbooks   # workbooks -> out/gold/
+python stage5_extract.py --out out --gold-only --dry-run                # token estimate, no API call
+python stage5_extract.py --out out --gold-only                          # extract the 5 calibration pilots
+python stage5_compare.py --out out                                      # -> out/calibration.xlsx
+python stage5_extract.py --out out                                      # all pilots, after the prompts are tuned
 ```
 
-Offline test of the API request (no key needed): `python tests/test_stage3_api_shape.py`.
+Offline tests (no key needed): `python tests/test_stage3_api_shape.py` (API request shape) and `python tests/test_stage5_offline.py out CLAB-P-083` (stage-5 checks). `tests/test_gold_parity.py` checks the Python workbook importer against the tracker's JS importer (needs Node).
 
 Every stage can be re-run safely. Stage 1 reuses extracted text. Stage 3 keeps its API answers in `out/screening/` and only repeats a call when the document, the prompt or the model changes.
 
