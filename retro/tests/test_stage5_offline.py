@@ -71,3 +71,32 @@ assert all(0 <= r["confidence"] <= 1 for r in rs)
 assert res["hypotheses"] and res["cost_items"] and res["cost_items"][0]["evidence"][0]["verified"]
 assert res["pilot"], "cover fields present"
 print("ok:", res["checks"])
+
+# Second pass: the follow-up call returns the entries the first answer left out; none may stay "not returned".
+class FakeFollowup(Fake):
+    def create(self, **kw):
+        content = kw["messages"][0]["content"]
+        if not content.startswith("Follow-up"):
+            return super().create(**kw)
+        fields, hyps = [], {}
+        for line in content.splitlines():
+            m1 = re.match(r"- `(COVER|L\d\.\d)`.*?/ `?([\w.]+)`?", line)
+            m2 = re.match(r'- label "(.*?)" \(hypothesis: .*\): fields (.*)$', line)
+            if m2:
+                hyps[m2.group(1)] = [{"dimension": "L3.2", "field": k, "status": "no_evidence", "value": "", "note": "follow-up",
+                                      "confidence": 0, "evidence": []} for k in re.findall(r"`([\w.]+)`", m2.group(2))]
+            elif m1:
+                fields.append({"dimension": m1.group(1), "field": m1.group(2), "status": "no_evidence", "value": "", "note": "follow-up",
+                               "confidence": 0, "evidence": []})
+        ans = {"fields": fields, "cost_items": [], "hypotheses": [{"label": k, "fields": v} for k, v in hyps.items()]}
+        usage = SimpleNamespace(input_tokens=1, output_tokens=1, cache_creation_input_tokens=0, cache_read_input_tokens=0)
+        return SimpleNamespace(content=[SimpleNamespace(type="text", text=json.dumps(ans))], usage=usage, stop_reason="end_turn")
+
+
+import shutil  # noqa: E402
+shutil.rmtree(out / "extraction_mock", ignore_errors=True)
+model.client = SimpleNamespace(messages=FakeFollowup())
+res2 = s5.extract_pilot(pid, model, catalog, out, 150000, dry_run=False, mock_run=True)
+assert res2["checks"]["not_returned"] == 0, res2["checks"]
+assert res2["checks"]["from_followup"] > 0
+print("ok (follow-up):", res2["checks"])

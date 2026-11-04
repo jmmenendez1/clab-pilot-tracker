@@ -301,6 +301,25 @@ Changes after run 2:
 - **Compare scoring.** Cells the evaluator left blank are no longer scored; the extractor's answers there are counted separately (`model_adds_where_gold_blank`). A workbook degree NA counts as "not graded", the same answer as the extractor's `no_evidence` / `not_applicable`.
 - **Degree evidence.** A degree with no quotes of its own is not flagged when its justification has evidence.
 
+### Full run (2026-11-04, Juan's machine): 29 pilots
+
+- **Volume.** 116 calls produced 1,470 fields, and 1,298 of 1,309 quotes were verified. Tokens: 2.19M written to the cache, 6.57M read from it, 327k output.
+- **Calibration pilots.** With the last degree anchors the five scored 0.88, 0.84, 0.72, 0.92 and 0.92 on filled vs gap. Every degree is within one step of the workbook. The two that dropped (Geothermal and Yaku) are explained by fields that were not returned (see below).
+- **Coverage tracks the documentation.**
+    - Lowest share of fields filled: MAIIA (0.20) and Vienna and Graz Exchanges Tandil (0.27), each with under 13k tokens of documents.
+    - Highest: Recycled Polymer Bales (0.93) and Microcentro (0.87).
+    - Respira Lima exceeded the reading budget, so 8 of its documents were omitted.
+- **Degrees.** 138 medium, 55 high, 3 low, 1 na. Juan accepts lower grades when the quotes support them (decision 2026-11-04).
+
+Code fixes after the run. None changes the main requests, so a re-run reuses the cached answers and only makes the follow-up calls.
+
+- **Fields left out (21 of 1,470).** The schema cannot force every entry to appear. Three changes:
+    - A degree or justification left out next to a partner returned as a gap takes the partner's status and note, with no call.
+    - The model sometimes returns a hypothesis whose statement is itself a gap ("No stated objective"). It now becomes the L3.2 gap entry instead of a hypothesis with nine empty fields; this was MAIIA's and Vienna/Graz's case.
+    - The rest are asked for once more in a small follow-up call that lists only the missing entries. The corpus is read from the cache, and the answer is cached as `<pid>_L<n>_followup.json`. Entries filled this way carry `from_followup`, counted in `checks.from_followup`.
+- **Dates with commentary (18).** The model wrote, for example, "September 2025 (Final Report, Product 5)". `norm_date()` keeps the date at the precision given (`2025-09`) and moves the original text to the note. It reads ISO dates, "D Month YYYY", "Month YYYY" and bare years, with month names in English, Spanish and Portuguese.
+- **Identification strategy without quotes (18).** `attribution_method` classifies the hypothesis' counterfactual and method fields. It is no longer flagged when those fields have evidence, the same rule as for degrees.
+
 ### 5c. Comparison (`stage5_compare.py`)
 
 `out/calibration.xlsx` compares, per field:

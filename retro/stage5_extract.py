@@ -19,7 +19,9 @@ How
       in the corpus itself, so gaps can be traced to the cut.
     - Checks in code after each answer:
         * every requested (dimension, field) is present; missing ones become no_evidence, flagged "not returned by the
-          extractor" and counted in checks.not_returned (labels like `L1.1 Relevance` are normalised to `L1.1` first);
+          extractor" and counted in checks.not_returned (labels like `L1.1 Relevance` are normalised to `L1.1` first).
+          Before that, a degree / justification left out next to its partner's gap takes the partner's status and
+          note, and the rest are asked for once more in a small follow-up call (cached as <pid>_L<n>_followup.json);
         * enum values (degree, on_time, attribution_method, opex.period, pilot_type) and dates are validated;
         * every evidence quote is searched in the cited document (case/whitespace-insensitive); if found in another
           document the doc_id is corrected; quotes not found are flagged and the field's status is kept but marked
@@ -247,6 +249,33 @@ def check_evidence(ev_list, doc_text):
     return out
 
 
+MONTHS = {m: i + 1 for i, names in enumerate([
+    "january enero janeiro jan ene", "february febrero fevereiro feb fev", "march marzo março marco mar",
+    "april abril apr abr", "may mayo maio", "june junio junho jun", "july julio julho jul",
+    "august agosto aug ago", "september septiembre setembro sep set sept", "october octubre outubro oct out",
+    "november noviembre novembro nov", "december diciembre dezembro dec dic dez"]) for m in names.split()}
+
+
+def norm_date(v):
+    """The model sometimes writes a date with commentary ('September 2025 (Final Report, Product 5)').
+    Returns (ISO date at the precision given, remaining text) or (None, v) when no date is found.
+    Accepts YYYY-MM-DD, YYYY-MM, 'D Month YYYY', 'Month YYYY' and a bare year (en/es/pt month names)."""
+    t = str(v or "").strip()
+    m = re.match(r"\D{0,25}?(\d{4}-\d{2}-\d{2}|\d{4}-\d{2})\b", t)
+    if m:
+        return m.group(1), t[m.end():].strip(" ;,.()")
+    m = re.match(r"\D{0,25}?\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:de\s+)?([A-Za-zçÇ]+)\.?\s+(?:de\s+|del\s+)?(\d{4})\b", t)
+    if m and m.group(2).lower() in MONTHS:
+        return f"{m.group(3)}-{MONTHS[m.group(2).lower()]:02d}-{int(m.group(1)):02d}", t[m.end():].strip(" ;,.()")
+    m = re.match(r"\D{0,25}?\b([A-Za-zçÇ]+)\.?\s+(?:de\s+|del\s+)?(\d{4})\b", t)
+    if m and m.group(1).lower() in MONTHS:
+        return f"{m.group(2)}-{MONTHS[m.group(1).lower()]:02d}", t[m.end():].strip(" ;,.()")
+    m = re.match(r"\D{0,25}?\b((?:19|20)\d{2})\b", t)
+    if m:
+        return m.group(1), t[m.end():].strip(" ;,.()")
+    return None, t
+
+
 def validate(entry, ftype, options, doc_text):
     flags = []
     st = entry.get("status")
@@ -260,7 +289,12 @@ def validate(entry, ftype, options, doc_text):
         if ftype == "enum" and options and v not in options:
             flags.append(f"value {v!r} not in {options}")
         if ftype == "date" and v and not re.fullmatch(r"\d{4}(-\d{2}(-\d{2})?)?", v):
-            flags.append(f"date {v!r} not ISO")
+            iso, rest = norm_date(v)
+            if iso:  # keep the date, move the commentary to the note
+                entry["value"] = iso
+                entry["note"] = ((entry.get("note") or "").strip() + f" [Date as written: {v}]").strip()
+            else:
+                flags.append(f"date {v!r} not ISO")
         if ftype == "degree":
             entry["value"] = v.lower()
         if not entry.get("evidence"):
@@ -280,6 +314,50 @@ def validate(entry, ftype, options, doc_text):
 
 
 # ------------------------------------------------------------------------------------------------ one pilot
+def cached_call(model, system, user, key, raw_path, catalog, mock):
+    """One API call, cached on disk under `key` (prompt + corpus + request + model + schema)."""
+    cached = json.loads(raw_path.read_text(encoding="utf-8")) if raw_path.exists() else None
+    if cached and cached.get("key") == key and not model.mock:
+        return cached["answer"], {}
+    ans, usage = model.call(system, user, {"input_schema": build_schema(catalog)}, mock)
+    if not model.mock:
+        raw_path.write_text(json.dumps({"key": key, "time": time.strftime("%Y-%m-%d %H:%M"), "answer": ans, "usage": usage},
+                                       ensure_ascii=False, indent=1), encoding="utf-8")
+    return ans, usage
+
+
+def pair_gaps(got, pairs):
+    """A degree and its justification are one judgment. When the model returns one of them as a gap
+    (no_evidence / not_applicable) and leaves the other out, the missing one takes the same status and note."""
+    for d, f in pairs:
+        if f not in ("degree", "justification") or (d, f) in got:
+            continue
+        other = got.get((d, "justification" if f == "degree" else "degree"))
+        if other and other.get("status") in ("no_evidence", "not_applicable"):
+            got[(d, f)] = {"dimension": d, "field": f, "status": other["status"], "value": "", "confidence": other.get("confidence", 0),
+                           "evidence": [], "note": other.get("note") or "Same as the dimension's other field.", "paired_gap": True}
+
+
+def followup_text(level, miss, miss_h, hyps, dims, catalog):
+    lines = [f"Follow-up for Level {level}. Your answer for this level left out the entries below. Return exactly these, "
+             "following the same rules (verbatim evidence for anything filled; a gap with a note saying what you looked for). "
+             "Leave every other entry out."]
+    if miss:
+        lines.append("\nIn `fields`:")
+        for d, f in miss:
+            if d == "COVER":
+                lines.append(f"- `COVER` / `{f}`: " + next(f"{lab} — {t}" for k, lab, t in COVER_FIELDS if k == f))
+            else:
+                fdef = next(x for x in dim_fields(dims[d], catalog) if x["key"] == f)
+                lines.append(f"- `{d}` {dims[d]['name']} / " + field_line(fdef)[2:])
+    if miss_h:
+        lines.append("\nIn `hypotheses` (one item per hypothesis, `label` exactly as given, dimension `L3.2`):")
+        for i, label, keys in miss_h:
+            stmt = next((x.get("value") for x in hyps[i].get("fields", []) if norm_key(x.get("field")) == "hypothesis"), "")
+            lines.append(f'- label "{label}" (hypothesis: {stmt}): fields ' + ", ".join(f"`{k}`" for k in keys))
+    return "\n".join(lines)
+
+
 def extract_pilot(pid, model, catalog, out, budget, dry_run, mock_run=False):
     kb = out / "kb" / pid
     if not (kb / "corpus.md").exists():
@@ -305,18 +383,42 @@ def extract_pilot(pid, model, catalog, out, budget, dry_run, mock_run=False):
             result["preview"].append({"level": level, "est_input_tokens": int((len(system) + len(user)) / CHARS_PER_TOKEN),
                                       "cached": raw_path.exists() and json.loads(raw_path.read_text(encoding='utf-8')).get("key") == key})
             continue
-        cached = json.loads(raw_path.read_text(encoding="utf-8")) if raw_path.exists() else None
-        if cached and cached.get("key") == key and not model.mock:
-            ans, usage = cached["answer"], {}
-        else:
-            mock = lambda: {"fields": [{"dimension": d, "field": f, "status": "no_evidence", "value": "", "note": "(mock)", "confidence": 0, "evidence": []} for d, f in pairs],
-                            "cost_items": [], "hypotheses": []}
-            ans, usage = model.call(system, user, {"input_schema": build_schema(catalog)}, mock)
-            if not model.mock:
-                raw_path.write_text(json.dumps({"key": key, "time": time.strftime("%Y-%m-%d %H:%M"), "answer": ans, "usage": usage}, ensure_ascii=False, indent=1), encoding="utf-8")
+        mock = lambda: {"fields": [{"dimension": d, "field": f, "status": "no_evidence", "value": "", "note": "(mock)", "confidence": 0, "evidence": []} for d, f in pairs],
+                        "cost_items": [], "hypotheses": []}
+        ans, usage = cached_call(model, system, user, key, raw_path, catalog, mock)
         result["usage"].append({"level": level, **usage})
 
         got = {(norm_dim(e.get("dimension")), norm_key(e.get("field"))): e for e in ans.get("fields", [])}
+        hyps = ans.get("hypotheses", [])
+        # A "hypothesis" item whose statement is itself a gap ("No stated objective") means no hypothesis:
+        # it becomes the L3.2 gap entry, not a hypothesis with nine empty fields.
+        for h in [h for h in hyps if any(norm_key(x.get("field")) == "hypothesis" and x.get("status") != "filled" for x in h.get("fields", []))]:
+            hyps.remove(h)
+            if ("L3.2", "hypothesis") not in got:
+                got[("L3.2", "hypothesis")] = next(x for x in h["fields"] if norm_key(x.get("field")) == "hypothesis")
+        pair_gaps(got, pairs)
+        # Follow-up: the model sometimes leaves out a few requested entries (run of 2026-11-04: 21 of 1,440 fields).
+        # Ask once more for those only; the corpus is read from the cache, so the call is small.
+        miss = [(d, f) for d, f in pairs if (d, f) not in got]
+        miss_h = [(i, h.get("label", ""), [k for k in hyp_keys if k not in {norm_key(x.get("field")) for x in h.get("fields", [])}])
+                  for i, h in enumerate(hyps)] if hyp_keys else []
+        miss_h = [m for m in miss_h if m[2]]
+        if (miss or miss_h) and not dry_run:
+            fu = followup_text(level, miss, miss_h, hyps, dims, catalog)
+            fans, fusage = cached_call(model, system, fu, sha(system + fu + model.model + json.dumps(build_schema(catalog), sort_keys=True)),
+                                       raw_dir / f"{pid}_L{level}_followup.json", catalog, lambda: {"fields": [], "cost_items": [], "hypotheses": []})
+            result["usage"].append({"level": level, "followup": True, **fusage})
+            for e in fans.get("fields", []):
+                k = (norm_dim(e.get("dimension")), norm_key(e.get("field")))
+                if k in miss and k not in got:
+                    got[k] = {**e, "from_followup": True}
+            for fh in fans.get("hypotheses", []):
+                i = next((j for j, lab, _ in miss_h if fold(lab) == fold(fh.get("label", ""))), miss_h[0][0] if len(miss_h) == 1 else None)
+                if i is None:
+                    continue
+                have = {norm_key(x.get("field")) for x in hyps[i].get("fields", [])}
+                hyps[i].setdefault("fields", []).extend({**x, "from_followup": True} for x in fh.get("fields", []) if norm_key(x.get("field")) not in have)
+            pair_gaps(got, pairs)
         for d, f in pairs:
             e = got.get((d, f)) or {"dimension": d, "field": f, "status": "no_evidence", "value": "", "confidence": 0, "evidence": [],
                                     "note": "Field not returned by the extractor.", "missing_in_answer": True}
@@ -332,13 +434,13 @@ def extract_pilot(pid, model, catalog, out, budget, dry_run, mock_run=False):
         if extra:
             result.setdefault("ignored_fields", []).extend(f"{a}/{b}" for a, b in extra)
         if hyp_keys is not None:
-            if not ans.get("hypotheses"):
+            if not hyps:
                 e = got.get(("L3.2", "hypothesis")) or {"status": "no_evidence", "value": "", "confidence": 0, "evidence": [],
                                                         "note": "No hypotheses returned by the extractor.", "missing_in_answer": True}
                 e = validate(e, "longtext", None, doc_text)
                 result["responses"].append({"dimension": "L3.2", "field": "hypothesis", "hypothesis_index": None, "stage": "ideation",
                                             **{k: v for k, v in e.items() if k not in ("dimension", "field")}})
-            for i, h in enumerate(ans.get("hypotheses", [])):
+            for i, h in enumerate(hyps):
                 result["hypotheses"].append({"index": i, "label": h.get("label", f"Impact ({i + 1})")})
                 hg = {norm_key(x.get("field")): x for x in h.get("fields", [])}
                 for f in hyp_keys:
@@ -357,6 +459,12 @@ def extract_pilot(pid, model, catalog, out, budget, dry_run, mock_run=False):
     for r in result["responses"]:
         if r["field"] == "degree" and "filled without evidence" in r["flags"] and just.get(r["dimension"], {}).get("evidence"):
             r["flags"].remove("filled without evidence")
+    # Likewise the identification strategy is a classification of the hypothesis' counterfactual / method fields.
+    hyp_ev = {r["hypothesis_index"] for r in result["responses"] if r["dimension"] == "L3.2" and r["hypothesis_index"] is not None
+              and r["field"] in ("counterfactual", "description", "data_source", "indicator") and r.get("evidence")}
+    for r in result["responses"]:
+        if r["field"] == "attribution_method" and "filled without evidence" in r["flags"] and r["hypothesis_index"] in hyp_ev:
+            r["flags"].remove("filled without evidence")
     pt = result["pilot"].get("pilot_type", {})
     for r in result["responses"]:  # dimensions that do not apply to the pilot type
         ap = dims[r["dimension"]]["applies_to"]
@@ -369,6 +477,7 @@ def extract_pilot(pid, model, catalog, out, budget, dry_run, mock_run=False):
         "not_applicable": sum(r["status"] == "not_applicable" for r in result["responses"]),
         "with_flags": sum(bool(r["flags"]) for r in result["responses"]),
         "not_returned": sum(bool(r.get("missing_in_answer")) for r in result["responses"]),
+        "from_followup": sum(bool(r.get("from_followup")) for r in result["responses"]),
         "quotes": sum(len(r["evidence"]) for r in result["responses"]),
         "quotes_verified": sum(e["verified"] for r in result["responses"] for e in r["evidence"]),
         "hypotheses": len(result["hypotheses"]), "cost_items": len(result["cost_items"]),

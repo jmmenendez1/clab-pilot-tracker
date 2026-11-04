@@ -10,9 +10,9 @@ What each stage does and why, the parameters, the validation results and the tea
 | 2 | `stage2_registry.py` | repository workbook (Review / Notes) + stage 1 | `out/pilot_registry.xlsx` | done; awaiting team review |
 | 3 | `stage3_screen_unreviewed.py` | stage 2 + Anthropic API | `out/screening_unreviewed.xlsx`, `out/document_reassignments.csv` | done (2026-11-03) |
 | 4 | `stage4_knowledge_base.py` | stages 2–3 (+ team rejections) | `out/kb/<pilot_id>/manifest.json`, `corpus.md`, `out/kb/kb_summary.csv` | done (2026-11-03) |
-| 5a | `stage5_gold_workbooks.py` | hand-made evaluation workbooks | `out/gold/<pilot_id>.json` | ready |
-| 5b | `stage5_extract.py` | stage 4 + catalog + Anthropic API | `out/extraction/<pilot_id>.json` | ready; calibrate first |
-| 5c | `stage5_compare.py` | 5a + 5b | `out/calibration.xlsx` | ready |
+| 5a | `stage5_gold_workbooks.py` | hand-made evaluation workbooks | `out/gold/<pilot_id>.json` | done (2026-11-03) |
+| 5b | `stage5_extract.py` | stage 4 + catalog + Anthropic API | `out/extraction/<pilot_id>.json` | done (29 pilots, 2026-11-04) |
+| 5c | `stage5_compare.py` | 5a + 5b | `out/calibration.xlsx` | done (2 calibration runs) |
 | 6 | loader into the tracker | stage 5 | rows in Supabase | planned |
 
 ## Setup (Windows, once)
