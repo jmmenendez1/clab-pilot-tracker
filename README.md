@@ -48,6 +48,16 @@ Two ways to load a pilot evaluated in the Excel template (`.xlsx`/`.xlsm`):
 
 Run `db/migrations/001_import_source.sql` once before the first import (adds the provenance column). Cost figures written as free text land in the L2.1 notes; enter the USD amounts by subcategory afterwards. `node import/test_import.js file.xlsm` shows what would be imported without writing anything.
 
+## Loading the retrospective evaluation (retro/)
+
+The retro pipeline (`retro/`) extracts the framework from each validated pilot's documents. Its results enter the tracker as **drafts**:
+
+1. Run `db/migrations/002_retro_provenance.sql` once in the SQL editor. It adds provenance columns to responses (origin, confidence, evidence quotes, flags), `pilot_key` and `retro_cover` to pilots, and the `evaluability_baselines` table. It is safe to re-run.
+2. From `retro/`, run `python stage6_load_sql.py --out out --author-email <your tracker email>`. Then run the `out/load/load_NN.sql` files in the SQL editor, in order. Each pilot reports what it inserted and what it kept.
+3. In the app, drafts are shaded and badged *Draft*, with their confidence and the verbatim quotes they rest on. *Confirm* re-saves a draft under the reviewer's name; editing it saves the reviewer's version. The loader never writes over a value a person saved, and re-running it only updates drafts that are still drafts.
+
+The pilot list shows **evaluability**: complete subdimensions out of all 18, where *not applicable* counts as incomplete. It shows the current value, plus the retrospective baseline (documents only) where there is one. The rule is in `web/evaluability.js` and `retro/evaluability.py`; see `retro/METHODS.md`.
+
 ## Local development
 
 ```

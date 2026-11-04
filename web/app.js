@@ -89,12 +89,22 @@
     document.getElementById("import").onclick = importDialog;
     const pilots = await data.listPilots();
     if (!pilots.length) { document.getElementById("list").innerHTML = `<div class="empty">No pilots yet. <a href="#/pilots/new">Register the first one.</a></div>`; return; }
-    const progress = await Promise.all(pilots.map(p => data.currentResponses(p.id).then(rows => levelProgress(p, rows))));
+    const [state, baselines] = await Promise.all([
+      Promise.all(pilots.map(p => Promise.all([data.currentResponses(p.id), data.listHypotheses(p.id)]))),
+      data.listBaselines()]);
+    const progress = state.map(([rows], i) => levelProgress(pilots[i], rows));
+    const ev = state.map(([rows, hyps]) => window.CLAB.evaluability(catalog, rows, hyps));
+    const drafts = state.map(([rows]) => rows.filter(r => r.origin === "retro_extraction").length);
+    const base = p => baselines.find(b => b.pilot_id === p.id && b.source === "retro_extraction");
+    const pct = x => `${Math.round(x * 100)}%`;
     document.getElementById("list").className = "";
-    document.getElementById("list").innerHTML = `<table><thead><tr><th>Pilot</th><th>TC</th><th>Location</th><th>Type</th><th>Mode</th><th>Stage</th><th>Progress by level</th><th>Updated</th></tr></thead><tbody>
+    document.getElementById("list").innerHTML = `<table><thead><tr><th>Pilot</th><th>TC</th><th>Location</th><th>Type</th><th>Mode</th><th>Stage</th><th>Progress by level</th>
+      <th title="Complete subdimensions / all ${catalog.dimensions.length} subdimensions (not applicable counts as incomplete)">Evaluability</th><th>Drafts to review</th><th>Updated</th></tr></thead><tbody>
       ${pilots.map((p, i) => `<tr class="clickable" data-id="${p.id}"><td><strong>${esc(p.name)}</strong></td><td class="code">${esc(p.tc_code)}</td><td>${esc(p.city)}, ${esc(p.country)}</td>
         <td>${esc(typeLabel(p.pilot_type))}</td><td>${esc(titleCase(p.mode))}</td><td>${esc(stageLabel(p.current_stage))}</td>
         <td><span class="levelbar">${progress[i].map(l => `<span class="${l.done === l.total ? "full" : l.done ? "part" : ""}" title="${l.done} of ${l.total} dimensions started">L${l.level} ${l.done}/${l.total}</span>`).join("")}</span></td>
+        <td style="white-space:nowrap" title="${ev[i].complete} of ${ev[i].total} subdimensions complete"><strong>${pct(ev[i].score)}</strong>${base(p) ? `<br><span class="muted" title="Retrospective baseline: what the documents alone allowed (${esc(base(p).computed_at)})">baseline ${pct(base(p).score)}</span>` : ""}</td>
+        <td>${drafts[i] ? `<span class="badge draft">${drafts[i]}</span>` : ""}</td>
         <td style="white-space:nowrap">${esc(fmtDate(p.updated_at))}</td></tr>`).join("")}</tbody></table>`;
     $main.querySelectorAll("tr.clickable").forEach(tr => tr.onclick = () => location.hash = `#/pilots/${tr.dataset.id}`);
   }
@@ -165,6 +175,7 @@
       <details class="card" style="padding:10px 20px"><summary style="cursor:pointer;color:var(--blue)">Problem, target population, lead</summary>
         <dl class="kv" style="margin-top:10px"><dt>Problem definition</dt><dd>${esc(pilot.problem_definition || "—")}</dd><dt>Target population</dt><dd>${esc(pilot.target_population || "—")}</dd>
         <dt>Lead / responsible</dt><dd>${esc(pilot.lead || "—")}</dd><dt>Counterpart</dt><dd>${esc(pilot.counterpart || "—")}</dd><dt>Dates</dt><dd>${esc(pilot.date_started || "?")} → ${esc(pilot.date_ended || "ongoing")}</dd>${pilot.import_source ? `<dt>Imported from</dt><dd>${esc(pilot.import_source)}</dd>` : ""}</dl></details>
+      ${rows.some(r => r.origin === "retro_extraction") ? `<div class="banner draft-banner"><strong>${rows.filter(r => r.origin === "retro_extraction").length} values are drafts</strong> from the retrospective extraction of this pilot's documents (shaded below, with the quotes they rest on). Review each one: <em>Confirm</em> keeps it under your name; editing it saves your version. Nothing is final until a person confirms it.</div>` : ""}
       <div class="stages">${tabs}</div>
       <div class="stage-intro"><strong>${esc(stageDef.label)}.</strong> ${esc(stageDef.instructions)}</div>
       ${done ? `<div class="banner warn">This stage was completed on ${esc(fmtDate(done.completed_at))} by ${esc(done.completer?.full_name || done.completer?.email || "")}. Fields stay editable; you will be asked to confirm the first change.</div>` : ""}
@@ -224,14 +235,25 @@
   function metaHtml(row) {
     if (!row) return `Not yet filled`;
     const who = row.author?.full_name || row.author?.email || "";
+    if (row.origin === "retro_extraction") return draftHtml(row);
     return `Saved ${esc(fmtDate(row.created_at))}${who ? " by " + esc(who) : ""}${row.stage ? " · stage: " + esc(stageLabel(row.stage)) : ""}`;
+  }
+  /** A machine draft: where it comes from, how sure the extraction was, the verbatim quotes, and a Confirm button. */
+  function draftHtml(row) {
+    const ev = Array.isArray(row.evidence) ? row.evidence : [];
+    const conf = row.confidence == null ? "" : ` · confidence ${Math.round(Number(row.confidence) * 100)}%`;
+    const flags = (row.flags || []).length ? ` · <span class="flag">check: ${esc(row.flags.join("; "))}</span>` : "";
+    const quotes = ev.length ? `<details class="evidence"><summary>${ev.length} quote${ev.length > 1 ? "s" : ""} from the documents</summary><ul>${ev.map(e =>
+      `<li><q>${esc(e.quote)}</q> <span class="muted">— ${esc(e.document || e.doc_id)}, ${esc(e.location)}${e.verified ? "" : ' · <span class="flag">quote not found in the text</span>'}</span></li>`).join("")}</ul></details>` : "";
+    return `<span class="badge draft">Draft</span> From the retrospective extraction, ${esc(fmtDate(row.created_at))}${conf}${flags}
+      <button type="button" class="btn small confirm-draft">Confirm</button>${quotes}`;
   }
   function fieldRow(dim, f, hypId, ctx) {
     const row = ctx.current.get(respKey(dim.code, f.key, hypId));
     const status = row?.status || "filled";
     const value = valueOf(row, f);
     const needNote = status !== "filled" || (f.type === "degree" && value === "na");
-    return `<div class="frow ${status !== "filled" ? "off" : ""}" data-dim="${dim.code}" data-field="${f.key}" data-hyp="${hypId || ""}" data-type="${f.type}">
+    return `<div class="frow ${status !== "filled" ? "off" : ""} ${row?.origin === "retro_extraction" ? "draft" : ""}" data-dim="${dim.code}" data-field="${f.key}" data-hyp="${hypId || ""}" data-type="${f.type}">
       <div class="field"><label class="${f.required ? "req" : ""}">${esc(f.label)}</label>${inputHtml(f, value, status !== "filled")}${f.help ? `<div class="help">${esc(f.help)}</div>` : ""}</div>
       <div class="status"><label>Status</label><select class="status-sel">${catalog.field_statuses.map(s => `<option value="${s.key}" ${s.key === status ? "selected" : ""}>${esc(s.label)}</option>`).join("")}</select></div>
       <div class="note" style="${needNote ? "" : "display:none"}"><label class="req">Note</label><input type="text" class="note-in" value="${esc(row?.note || "")}" placeholder="Why there is no evidence / why it does not apply / why NA"></div>
@@ -277,6 +299,8 @@
       await commit(frow, ctx);
     });
     $dims.addEventListener("click", async e => {
+      const conf = e.target.closest(".confirm-draft");
+      if (conf) { const frow = conf.closest(".frow"); await commit(frow, ctx, { confirm: true }); return; }
       const add = e.target.closest(".add-hyp");
       if (add) { await data.addHypothesis(ctx.pilot.id); toast("Hypothesis added"); render(); return; }
       const rm = e.target.closest(".remove-hyp");
@@ -287,7 +311,7 @@
     });
   }
 
-  async function commit(frow, ctx) {
+  async function commit(frow, ctx, { confirm = false } = {}) {
     const { dim, field, hyp, type } = frow.dataset;
     const statusSel = frow.querySelector(".status-sel");
     const status = statusSel ? statusSel.value : "filled";
@@ -311,7 +335,7 @@
     }
     const same = prev && prev.status === row.status && (prev.note || null) === row.note &&
       (prev.value_text ?? null) === row.value_text && (prev.value_num == null ? null : Number(prev.value_num)) === row.value_num && (prev.value_date ?? null) === row.value_date;
-    if (same) return;
+    if (same && !(confirm && prev.origin === "retro_extraction")) return;   // confirming a draft re-saves it under the user's name
 
     const done = ctx.completions.find(c => c.stage === ctx.stage);
     const warnKey = `${ctx.pilot.id}|${ctx.stage}`;
@@ -323,8 +347,9 @@
     try {
       const saved = await data.saveResponse(row);
       ctx.current.set(key, saved);
+      frow.classList.remove("draft");
       if (meta) { meta.className = "meta"; meta.innerHTML = metaHtml(saved); }
-      toast("Saved");
+      toast(confirm ? "Confirmed" : "Saved");
     } catch (err) { if (meta) { meta.className = "meta err"; meta.textContent = "Not saved: " + err.message; } }
   }
 
@@ -407,6 +432,10 @@
   /* ---------------- views: pilot summary (Evaluation Sheet) ---------------- */
   function cell(r, f) {
     if (!r) return `<span class="muted">—</span>`;
+    if (r.origin === "retro_extraction") return `<span class="badge draft" title="From the retrospective extraction; not yet confirmed by a person">Draft</span> ` + cellValue(r, f);
+    return cellValue(r, f);
+  }
+  function cellValue(r, f) {
     if (r.status !== "filled") return `<span class="badge na">${esc(titleCase(r.status))}</span> ${esc(r.note || "")}`;
     const v = valueOf(r, f);
     if (f.type === "degree") return `<span class="degree ${esc(v)}">${esc(catalog.degree_scale.find(d => d.key === v)?.label || v)}</span>${v === "na" && r.note ? " — " + esc(r.note) : ""}`;
@@ -414,14 +443,20 @@
     if (f.type === "enum") return esc(f.option_labels?.[v] || titleCase(v));
     return esc(v);
   }
-  const who = r => r ? `${esc(r.author?.full_name || r.author?.email || "")}<br><span class="muted">${esc(fmtDate(r.created_at))}</span>` : "";
+  const who = r => r ? `${r.origin === "retro_extraction" ? "Retrospective extraction" : esc(r.author?.full_name || r.author?.email || "")}<br><span class="muted">${esc(fmtDate(r.created_at))}</span>` : "";
 
   async function viewSummary(id) {
     setNav("pilots");
     const pilot = await data.getPilot(id);
     if (!pilot) { $main.innerHTML = `<div class="empty">Pilot not found.</div>`; return; }
-    const [hyps, rows, completions] = await Promise.all([data.listHypotheses(id), data.currentResponses(id), data.listCompletions(id)]);
+    const [hyps, rows, completions, baselines] = await Promise.all([data.listHypotheses(id), data.currentResponses(id), data.listCompletions(id), data.listBaselines()]);
     const cur = new Map(rows.map(r => [respKey(r.dimension_code, r.field_key, r.hypothesis_id), r]));
+    const ev = window.CLAB.evaluability(catalog, rows, hyps);
+    const evBase = baselines.filter(b => b.pilot_id === id);
+    const pct = x => `${Math.round(x * 100)}%`;
+    const evLine = `<strong>${pct(ev.score)}</strong> (${ev.complete} of ${ev.total} subdimensions complete)` +
+      evBase.map(b => ` · ${b.source === "retro_extraction" ? "retrospective baseline (documents only)" : b.source === "evaluator_workbook" ? "evaluator workbook" : esc(b.source)} ${pct(b.score)} <span class="muted">${esc(b.computed_at)}</span>`).join("") +
+      `<div class="evgrid">${catalog.dimensions.map(d => `<span class="${ev.by_subdimension[d.code] ? "ok" : ""}" title="${esc(d.name)}">${esc(d.code)}</span>`).join("")}</div>`;
     const sections = catalog.levels.map(level => {
       const dims = catalog.dimensions.filter(d => d.level === level.key && applies(d, pilot));
       const body = dims.map(dim => {
@@ -457,7 +492,7 @@
           <div class="muted" style="text-align:right">Generated ${esc(fmtDate(new Date().toISOString()))}<br>Framework v1.3.3</div></div>
         <dl class="kv"><dt>Problem definition</dt><dd>${esc(pilot.problem_definition || "—")}</dd><dt>Target population</dt><dd>${esc(pilot.target_population || "—")}</dd>
           <dt>Lead / responsible</dt><dd>${esc(pilot.lead || "—")}</dd><dt>Counterpart</dt><dd>${esc(pilot.counterpart || "—")}</dd><dt>Dates</dt><dd>${esc(pilot.date_started || "?")} → ${esc(pilot.date_ended || "ongoing")}</dd>
-          <dt>Stages</dt><dd>${timeline}</dd></dl>
+          <dt>Stages</dt><dd>${timeline}</dd><dt>Evaluability</dt><dd>${evLine}</dd></dl>
         ${sections}
       </div>`;
     document.getElementById("print").onclick = () => window.print();

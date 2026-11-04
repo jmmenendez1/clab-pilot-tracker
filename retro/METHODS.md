@@ -21,6 +21,8 @@ This file records what each stage of the retrospective pipeline does, the parame
 | 2026-11-04 | Calibration closed after run 2. Next step: run all 29 pilots. | Juan | `stage5_extract.py --out out` |
 | 2026-11-04 | **Evaluability** (completeness score) = complete subdimensions / all 18 subdimensions, the rule of the original instrument's Evaluation Sheet. The unit is the subdimension, not the field and not the level. The denominator is always every subdimension: `not_applicable` counts as incomplete, to keep the strictest standard and comparability, since non-applicability usually comes from the pilot's design. | Juan | `evaluability.py` |
 | 2026-11-04 | Evaluability is recorded twice: a **retrospective baseline** (stage-5 extraction, fixed and dated) and **current evaluability** (computed in the tracker from current responses, rising as people fill gaps). | Juan | `evaluability.py` → `out/evaluability.csv`; stage 6 (tracker) |
+| 2026-11-04 | Evaluability, L2.1 Costs: complete only with a cost amount (a USD subcategory, the L2.1 notes where costs written as text land, or a cost line item with an amount). The funding note alone does not count. | Claude, from the rule "at least one cost amount" | `evaluability.py`, `web/evaluability.js` |
+| 2026-11-04 | Stage 6 loads through SQL scripts run in the Supabase SQL editor, the path the tracker already uses for workbooks, instead of a bot account calling the API. No service key leaves Supabase, and the IDB network never has to reach the database from Python. Drafts are attributed to the reviewer who runs the scripts and marked `origin = retro_extraction`. | Claude (to confirm) | `stage6_load_sql.py` |
 | 2026-11-02 | The reviewer of each pilot depends on the pilot (Juan, Eli, Rober, Angie or Toni). It is recorded per pilot, with no fixed assignment. | Juan | `reviewer` column in the registry |
 
 ## 2. Stage 1 — text, duplicates, versions (`stage1_extract.py`)
@@ -366,9 +368,49 @@ The extraction scores higher for Montería because the workbook grades several o
 
 Text fields are not scored automatically. They appear side by side with the extractor's evidence, and a person records in a `review` column which side is right. The workbooks are a reference, not ground truth: the SPEC already lists corrections for them (currency, classification, counterfactual wording).
 
-## 7. Open items
+## 7. Stage 6 — loading into the tracker (`stage6_load_sql.py`, `db/migrations/002_retro_provenance.sql`)
 
-- [ ] Tracker (stage 6): store the retrospective baseline per pilot (score, 0/1 detail, date, catalog version), and compute current evaluability in the database with the rule in `evaluability.py`. Show both in the pilot list.
+**Migration 002** (once, safe to re-run) adds:
+
+- to `pilots`: `pilot_key` (CLAB-P-xxx), `related_tcs`, `lifecycle_status`, `retro_cover` (the extraction's cover values with their evidence);
+- to `hypotheses`: `origin`;
+- to `responses`: `origin` (human / workbook_import / retro_extraction), `confidence`, `evidence` (quotes with document name and location), `flags`;
+- the `evaluability_baselines` table.
+
+It also recreates `responses_current`, because `select *` views fix their column list when created.
+
+**Scripts.** `out/load/load_NN.sql` hold five pilots each, with one DO block per pilot.
+
+- **Matching.** A pilot is matched by `pilot_key`, then by `import_source` for the hand-made workbooks already imported, then by TC code and name. Otherwise it is created as retrospective, at the evaluation stage.
+- **Cover fields.** They come from the extraction, with registry values as a fallback, then `Unknown`. Partial dates are stored as the first day of the period, with the precision in the note.
+- **Hypotheses.** They are created only for pilots with no human hypotheses.
+- **Responses.** They go in as drafts (`origin = retro_extraction`) only where the field has no current row, or where the current row is a draft whose content changed. **A human value is never written over.**
+- **Costs.** Cost line items go to the L2.1 notes in their original currency. USD totals wait for the exchange-rate source.
+- **The "no hypothesis" gap** goes to `retro_cover`, because the tracker keeps L3.2 per hypothesis.
+- **Baselines.** The evaluability baseline is stored per pilot: the extraction's score, plus the workbook's score where there is one.
+
+**Tested** on PostgreSQL 16 with a Supabase-like auth stub (`tests/test_stage6_postgres.py`):
+
+1. schema + 001 + 002 (twice);
+2. the five workbooks imported with `import/workbooks_to_sql.js`;
+3. the 29 pilots loaded. The 5 workbook pilots were matched, not duplicated, and kept their hypotheses and values; the extraction filled only the 5 fields each had left empty. In all, 1,250 drafts went in.
+4. a second load inserted nothing;
+5. a value edited by a person survived a changed extraction, while an untouched draft was updated.
+
+A first run found that text containing `$$` (for example "cost ($ to $$$)") broke the DO block. Blocks now use their own delimiter.
+
+**Tracker.**
+
+- Drafts are shaded and badged, with confidence, flags and quotes (document, page or slide).
+- *Confirm* re-saves a draft under the reviewer's name, and editing it saves the reviewer's version. Both insert a human row, so the history keeps the draft.
+- The pilot page says how many drafts are left. The pilot list adds *Evaluability* (current, plus the baseline) and *Drafts to review*. The summary sheet shows evaluability with the 18 subdimensions marked.
+- `tests/test_evaluability_parity.py` checks that Python and JavaScript give the same score on 34 cases (29 extractions, 5 workbooks).
+
+**Evaluability after the L2.1 rule** (retrospective baseline): mean 0.65, median 0.67. Only 6 of the 29 pilots document a cost amount.
+
+## 8. Open items
+
+- [ ] Export: add each value's origin (draft or confirmed) to the wide export, so analyses can separate reviewed from unreviewed values.
 
 - [x] RG-T4182, Providencia. The HUB process evaluation (*4. Informe Pilotos V1.docx*) lists four pilots:
     1. YAKU, in Quito;

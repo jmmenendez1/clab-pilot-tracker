@@ -75,6 +75,7 @@ class LocalAdapter {
     return this.db.responses.filter(r => r.pilot_id === pilotId).map(r => ({ ...r, author: this.user })).sort((a, b) => a.created_at.localeCompare(b.created_at));
   }
 
+  async listBaselines() { return []; }
   async listCompletions(pilotId) { return this.db.completions.filter(c => c.pilot_id === pilotId).map(c => ({ ...c, completer: this.user })); }
   async completeStage(pilotId, stage, snapshot) {
     const c = { id: this.db.seq++, pilot_id: pilotId, stage, snapshot, completed_by: this.user.id, completed_at: new Date().toISOString() };
@@ -163,6 +164,11 @@ class SupabaseAdapter {
     return this._attachAuthors(data);
   }
 
+  /** Evaluability baselines (migration 002). Empty if the table does not exist yet. */
+  async listBaselines() {
+    const { data, error } = await this.sb.from("evaluability_baselines").select("*").order("computed_at", { ascending: false });
+    return error ? [] : data;
+  }
   async listCompletions(pilotId) {
     const { data, error } = await this.sb.from("stage_completions").select("*").eq("pilot_id", pilotId).order("completed_at", { ascending: false }); this._throw(error);
     const ids = [...new Set(data.map(c => c.completed_by))];

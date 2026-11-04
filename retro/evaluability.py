@@ -14,7 +14,8 @@ Definition (decision 2026-11-04, Juan; same as the Evaluation Sheet of the origi
         * L2.2: on_time and text.
         * L3.2 (one record per hypothesis): at least one hypothesis with hypothesis, counterfactual and indicator.
         * A dimension with no required field (L2.1 Disaggregated costs): at least one cost amount. In the
-          extraction, a cost line item with an amount; in the tracker or a workbook, any filled L2.1 field.
+          extraction, a cost line item with an amount; in the tracker or a workbook, a USD subcategory or the L2.1
+          notes, where costs written as text land. The funding note and the opex period alone do not count.
     - Status only: the score does not check quotes. The extraction already requires evidence for `filled`,
       and the tracker cannot check quotes, so baseline and current scores use the same rule.
 
@@ -23,6 +24,9 @@ Two moments are recorded (decision 2026-11-04):
       documented. Fixed, with its date. Written to out/evaluability.csv and, by the loader (stage 6), to the tracker.
     - Current evaluability: computed in the tracker from the current responses, so it rises as people fill gaps
       (for example after interviews with the implementing team).
+
+The tracker computes the current score with web/evaluability.js, the same rule in JavaScript
+(tests/test_evaluability_parity.py checks that both give the same result).
 
 Usage (from retro/)
     python evaluability.py --out out      # -> out/evaluability.csv (extraction, plus the hand-made workbooks if present)
@@ -56,7 +60,7 @@ def subdimension_complete(dim, catalog, responses, has_costs):
         return True
 
     if not req:  # L2.1: no required field -> at least one cost amount
-        return bool(has_costs) or any(ok(r) for r in rs if r["field"] not in ("opex.period",))
+        return bool(has_costs) or any(ok(r) for r in rs if r["field"] not in ("opex.period", "funding_note"))
     if dim.get("repeatable") == "hypothesis":
         idx = {r["hypothesis_index"] for r in rs if r.get("hypothesis_index") is not None}
         return any(all(any(ok(r) for r in rs if r.get("hypothesis_index") == i and r["field"] == k) for k in req) for i in idx)
