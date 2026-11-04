@@ -59,6 +59,7 @@ HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE))
 from stage3_screen_unreviewed import DEFAULT_MODEL, Model  # noqa: E402
 from stage5_gold_workbooks import find_catalog  # noqa: E402
+from evaluability import for_extraction  # noqa: E402
 
 CHARS_PER_TOKEN = 3.3
 STATUSES = ["filled", "no_evidence", "not_applicable"]
@@ -482,6 +483,8 @@ def extract_pilot(pid, model, catalog, out, budget, dry_run, mock_run=False):
         "quotes_verified": sum(e["verified"] for r in result["responses"] for e in r["evidence"]),
         "hypotheses": len(result["hypotheses"]), "cost_items": len(result["cost_items"]),
     }
+    result["evaluability"] = for_extraction(result, catalog)  # retrospective baseline (see evaluability.py)
+    result["checks"]["evaluability"] = result["evaluability"]["score"]
     result.pop("preview")
     (ext_dir / f"{pid}.json").write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
     return result
@@ -538,6 +541,7 @@ def main():
         print(f"corpus tokens: {S.corpus_tokens_sent.sum():,} (written to cache once per pilot, read 3 more times)")
     if not a.dry_run:
         print("usage:", model.usage)
+        print("evaluability (retrospective baseline) -> run `python evaluability.py --out out` for out/evaluability.csv")
 
 
 if __name__ == "__main__":

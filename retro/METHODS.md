@@ -19,6 +19,8 @@ This file records what each stage of the retrospective pipeline does, the parame
 | 2026-11-04 | The workbooks are a reference, not the target. A model degree lower than the workbook's is acceptable when the documentation's quotes support it, since a human evaluator may have rated favourably. `medium` is never a way to express doubt. | Juan | `prompts/extract_system.md` rule 6; review of `calibration.xlsx` |
 | 2026-11-04 | Workbook values that come from the evaluator's interviews with the implementing team, not from the reports, stay as gaps in the extraction (`no_evidence`). A person fills them later in conversation with the implementing team, and the loader never overwrites a human value. | Juan | stage 5 (no change); stage 6 (no-overwrite rule) |
 | 2026-11-04 | Calibration closed after run 2. Next step: run all 29 pilots. | Juan | `stage5_extract.py --out out` |
+| 2026-11-04 | **Evaluability** (completeness score) = complete subdimensions / all 18 subdimensions, the rule of the original instrument's Evaluation Sheet. The unit is the subdimension, not the field and not the level. The denominator is always every subdimension: `not_applicable` counts as incomplete, to keep the strictest standard and comparability, since non-applicability usually comes from the pilot's design. | Juan | `evaluability.py` |
+| 2026-11-04 | Evaluability is recorded twice: a **retrospective baseline** (stage-5 extraction, fixed and dated) and **current evaluability** (computed in the tracker from current responses, rising as people fill gaps). | Juan | `evaluability.py` → `out/evaluability.csv`; stage 6 (tracker) |
 | 2026-11-02 | The reviewer of each pilot depends on the pilot (Juan, Eli, Rober, Angie or Toni). It is recorded per pilot, with no fixed assignment. | Juan | `reviewer` column in the registry |
 
 ## 2. Stage 1 — text, duplicates, versions (`stage1_extract.py`)
@@ -320,6 +322,38 @@ Code fixes after the run. None changes the main requests, so a re-run reuses the
 - **Dates with commentary (18).** The model wrote, for example, "September 2025 (Final Report, Product 5)". `norm_date()` keeps the date at the precision given (`2025-09`) and moves the original text to the note. It reads ISO dates, "D Month YYYY", "Month YYYY" and bare years, with month names in English, Spanish and Portuguese.
 - **Identification strategy without quotes (18).** `attribution_method` classifies the hypothesis' counterfactual and method fields. It is no longer flagged when those fields have evidence, the same rule as for degrees.
 
+### Evaluability (`evaluability.py`)
+
+**Rule.** score = complete subdimensions / 18. A subdimension is complete when every field the catalog marks `required` is `filled`:
+
+- degree dimensions: a degree of high, medium or low (`na` does not count), plus the justification;
+- narrative dimensions: the text;
+- L2.2: `on_time` and the text;
+- L3.2: at least one hypothesis with hypothesis, counterfactual and indicator;
+- L2.1, which has no required field: at least one cost amount.
+
+`not_applicable` counts as incomplete. The rule reads only statuses, not quotes, so the tracker can apply exactly the same rule to current responses. The rule is derived from the catalog's `required` flags, so a catalog change carries over.
+
+**Outputs.** The extraction stores the baseline in each `out/extraction/<pid>.json` (`evaluability`, with the 0/1 detail per subdimension). `python evaluability.py --out out` writes `out/evaluability.csv` for the extractions and for the hand-made workbooks.
+
+**First values (2026-11-04, before the follow-up calls).**
+
+- Retrospective baseline: mean 0.67, median 0.72.
+- Highest: Microcentro, Recycled Polymer Bales and Geothermal (0.89).
+- Lowest: MAIIA (0.11) and Vienna and Graz Exchanges Tandil (0.22).
+- The subdimensions most often incomplete are L2.3 Benchmarking, L2.2 Timeliness (on_time is rarely stated) and L3.2 Impact (no counterfactual or indicator).
+- Workbooks (documents plus interviews) vs extraction (documents only):
+
+| Pilot | Workbook | Extraction |
+|---|---|---|
+| Geothermal | 0.94 | 0.89 |
+| Sustainability Corridors | 0.89 | 0.78 |
+| Yaku | 0.89 | 0.72 |
+| Last Mile | 0.83 | 0.78 |
+| Montería | 0.56 | 0.67 |
+
+The extraction scores higher for Montería because the workbook grades several of its degrees NA.
+
 ### 5c. Comparison (`stage5_compare.py`)
 
 `out/calibration.xlsx` compares, per field:
@@ -333,6 +367,8 @@ Code fixes after the run. None changes the main requests, so a re-run reuses the
 Text fields are not scored automatically. They appear side by side with the extractor's evidence, and a person records in a `review` column which side is right. The workbooks are a reference, not ground truth: the SPEC already lists corrections for them (currency, classification, counterfactual wording).
 
 ## 7. Open items
+
+- [ ] Tracker (stage 6): store the retrospective baseline per pilot (score, 0/1 detail, date, catalog version), and compute current evaluability in the database with the rule in `evaluability.py`. Show both in the pilot list.
 
 - [x] RG-T4182, Providencia. The HUB process evaluation (*4. Informe Pilotos V1.docx*) lists four pilots:
     1. YAKU, in Quito;

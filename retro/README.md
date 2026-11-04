@@ -13,6 +13,7 @@ What each stage does and why, the parameters, the validation results and the tea
 | 5a | `stage5_gold_workbooks.py` | hand-made evaluation workbooks | `out/gold/<pilot_id>.json` | done (2026-11-03) |
 | 5b | `stage5_extract.py` | stage 4 + catalog + Anthropic API | `out/extraction/<pilot_id>.json` | done (29 pilots, 2026-11-04) |
 | 5c | `stage5_compare.py` | 5a + 5b | `out/calibration.xlsx` | done (2 calibration runs) |
+| 5d | `evaluability.py` | stage 5b (+ 5a) | `out/evaluability.csv`: completeness score per pilot (retrospective baseline) | done (2026-11-04) |
 | 6 | loader into the tracker | stage 5 | rows in Supabase | planned |
 
 ## Setup (Windows, once)
@@ -57,6 +58,7 @@ python stage5_extract.py --out out --gold-only --dry-run                # token 
 python stage5_extract.py --out out --gold-only                          # extract the 5 calibration pilots
 python stage5_compare.py --out out                                      # -> out/calibration.xlsx
 python stage5_extract.py --out out                                      # all pilots, after the prompts are tuned
+python evaluability.py --out out                                         # -> out/evaluability.csv (completeness score)
 ```
 
 Offline tests (no key needed): `python tests/test_stage3_api_shape.py` (API request shape) and `python tests/test_stage5_offline.py out CLAB-P-083` (stage-5 checks). `tests/test_gold_parity.py` checks the Python workbook importer against the tracker's JS importer (needs Node).
