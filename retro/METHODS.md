@@ -408,7 +408,56 @@ A first run found that text containing `$$` (for example "cost ($ to $$$)") brok
 
 **Evaluability after the L2.1 rule** (retrospective baseline): mean 0.65, median 0.67. Only 6 of the 29 pilots document a cost amount.
 
-## 8. Open items
+## 8. Evaluability report (`report_evaluability.py` → dashboard *Pilot Evaluability*)
+
+Shows which subdimensions are hardest to evaluate, pilot by pilot, and evaluability over time by mode (retrospective / prospective).
+
+**Cell states.** Each pilot × subdimension gets a state:
+
+- `complete`: the rule of `evaluability.py`;
+- `partial`: something filled, but not every required field;
+- `no_evidence`;
+- `not_applicable`;
+- `empty`: nothing recorded.
+
+It also lists the required fields that are missing. For L3.2 that is the hypothesis closest to complete; for L2.1 it is "no cost amount".
+
+**Execution date.** The start date, or the end date if the start is missing. A month is placed on the 15th and a bare year on 1 July. Pilots with neither are listed below the chart.
+
+**Inputs.** By default the script reads the retrospective extraction. With `--tracker-csv` it reads the tracker's current state, which includes prospective pilots and human edits. That CSV comes from this query, run in the Supabase SQL editor and exported with *Export → Download CSV*:
+
+```sql
+select p.id, p.pilot_key, p.name, p.tc_code, p.mode, p.pilot_type, p.current_stage,
+       p.date_started, p.date_ended,
+       coalesce(jsonb_agg(jsonb_build_object(
+         'd', r.dimension_code, 'f', r.field_key, 'h', r.hypothesis_id, 's', r.status,
+         'v', case when r.field_key = 'degree' then r.value_text end, 'o', r.origin)
+       ) filter (where r.id is not null), '[]') as responses,
+       (select coalesce(jsonb_agg(h.id), '[]') from hypotheses h where h.pilot_id = p.id and not h.archived) as hypotheses
+from pilots p
+left join responses_current r on r.pilot_id = p.id
+where not p.archived
+group by p.id
+order by p.name;
+```
+
+**Dashboard.** The two CSV files (`out/report/pilots.csv`, `out/report/cells.csv`) are attached to the dashboard. To refresh it, re-run the script and replace the files. It has these sections:
+
+- headline figures;
+- subdimensions ranked by the share of pilots with the subdimension complete, stacked by state;
+- the missing required fields;
+- evaluability by pilot type;
+- a pilot × subdimension heatmap;
+- evaluability against execution date, colored by mode.
+
+**First reading (2026-11-04, 29 retrospective pilots).**
+
+- Hardest subdimensions: L2.3 Benchmarking (3 of 29 complete), L2.1 Costs (6; 12 have only a funding note), L1.7 Construction system (8; 20 not applicable, because it applies only to urban pilots), L3.2 Impact (9) and L2.2 Timeliness (10).
+- In L3.2 the missing field is almost always the counterfactual: 18 of the 19 partial pilots lack it, 7 of them the indicator as well.
+- In L2.2 it is "Delivered on time?", missing in 19 pilots.
+- Digital pilots have the lowest mean evaluability (0.56, n = 13); urban pilots have the highest (0.75, n = 7).
+
+## 9. Open items
 
 - [ ] Export: add each value's origin (draft or confirmed) to the wide export, so analyses can separate reviewed from unreviewed values.
 

@@ -15,6 +15,7 @@ What each stage does and why, the parameters, the validation results and the tea
 | 5c | `stage5_compare.py` | 5a + 5b | `out/calibration.xlsx` | done (2 calibration runs) |
 | 5d | `evaluability.py` | stage 5b (+ 5a) | `out/evaluability.csv`: completeness score per pilot (retrospective baseline) | done (2026-11-04) |
 | 6 | `stage6_load_sql.py` | stage 5 + `evaluability.py` | `out/load/load_NN.sql` for the Supabase SQL editor, `out/load/load_preview.csv` | done (29 pilots loaded as drafts, 2026-11-04) |
+| 7 | `report_evaluability.py` | stage 5 (or a tracker export) | `out/report/pilots.csv`, `cells.csv`: the *Pilot Evaluability* dashboard | done (2026-11-04) |
 
 ## Setup (Windows, once)
 
