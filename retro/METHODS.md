@@ -16,6 +16,9 @@ This file records what each stage of the retrospective pipeline does, the parame
 | 2026-11-02 | *Urban Tree Detection* and *Urban Oasis Colonia Bethania* stay as validated pilots with no change. Whatever their documents do not cover is recorded as gaps, and the team reviews them later. | Juan | no change; stage 5 fills gaps as `no_evidence` |
 | 2026-11-03 | Stage 3's proposed document moves are **accepted by default**. The team only marks `reject` where a move is wrong. | Juan | `out/document_reassignments.csv` → stage 4 |
 | 2026-11-03 | **Degrees rate what the documents show the pilot did.** A guiding question the documents leave unanswered lowers `confidence` and goes in the note. It does not lower the degree. Only weaknesses the documents show lower it. | Juan | `prompts/extract_system.md` rule 6 |
+| 2026-11-04 | The workbooks are a reference, not the target. A model degree lower than the workbook's is acceptable when the documentation's quotes support it, since a human evaluator may have rated favourably. `medium` is never a way to express doubt. | Juan | `prompts/extract_system.md` rule 6; review of `calibration.xlsx` |
+| 2026-11-04 | Workbook values that come from the evaluator's interviews with the implementing team, not from the reports, stay as gaps in the extraction (`no_evidence`). A person fills them later in conversation with the implementing team, and the loader never overwrites a human value. | Juan | stage 5 (no change); stage 6 (no-overwrite rule) |
+| 2026-11-04 | Calibration closed after run 2. Next step: run all 29 pilots. | Juan | `stage5_extract.py --out out` |
 | 2026-11-02 | The reviewer of each pilot depends on the pilot (Juan, Eli, Rober, Angie or Toni). It is recorded per pilot, with no fixed assignment. | Juan | `reviewer` column in the registry |
 
 ## 2. Stage 1 — text, duplicates, versions (`stage1_extract.py`)
@@ -288,7 +291,7 @@ Agreement here follows the scoring adopted after run 2, described below.
     - Yaku's cost per m² (USD 749.36);
     - Montería's POT 2021–2032.
 
-  None of these appears in the corpus, so the extractor is right to leave them as gaps. If those sources exist, such as a results presentation, adding them to `downloads_pilots` closes the gap.
+  None of these appears in the corpus. They come from Sabrina's interviews with the implementing teams, so the extractor is right to leave them as gaps. A person fills them later, in conversation with the team (decision 2026-11-04).
 - **Montería** has documents only up to the co-creation stage, so results (L3) cannot be assessed. The workbook says so with degree NA, and the extractor returns `no_evidence`.
 - **Pilot type.** For Sustainability Corridors the extractor says `methodology` and the workbook says `urban`. The team decides.
 - **Degrees** still sit one step below the workbook. Of 26 workbook "high", the model gave 7 high and 19 medium. Some of its reasons are real weaknesses the documents show (Geothermal L1.4: staff did not take part, and there was no co-creation). Others still reflect what was not documented. Rule 6 now gives anchors for high, medium and low and says that `medium` is not a way to express uncertainty.
