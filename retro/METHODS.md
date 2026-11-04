@@ -269,6 +269,35 @@ The first live run extracted the 5 pilots in 20 calls, with 135 of 139 quotes ve
 
 The workbooks may also draw on knowledge the documents lack. In Last Mile, the workbook states that the Cities LAB did not deploy the vehicles. Remaining differences go to the `review` column.
 
+### Calibration run 2 (2026-11-04, Juan's machine)
+
+The second run used the fixes from run 1, again 20 calls. The cache now works: 0.43M tokens were written and 1.30M read, against 1.27M and 0.42M before. All requested fields came back (`not_returned` = 0), and 264 of 268 quotes were verified. The model now returns 2–3 hypotheses per pilot.
+
+| Pilot | Agreement, filled vs gap | Degree, exact | Degree, within one step |
+|---|---|---|---|
+| Geothermal | 0.96 | 0.22 | 1.00 |
+| Yaku | 0.96 | 0.11 | 1.00 |
+| Montería | 0.72 | 0.60 | 1.00 |
+| Sustainability Corridors | 0.96 | 0.89 | 1.00 |
+| Last Mile | 1.00 | 0.62 | 1.00 |
+
+Agreement here follows the scoring adopted after run 2, described below.
+
+- **Information outside the repository.** Some fields the workbooks fill and the model leaves as gaps rest on sources that are not in the pilot's knowledge base:
+    - Geothermal's lifecycle costs (US$11,500 vs US$1,600; savings of 1.43 t CO2 a year);
+    - Yaku's cost per m² (USD 749.36);
+    - Montería's POT 2021–2032.
+
+  None of these appears in the corpus, so the extractor is right to leave them as gaps. If those sources exist, such as a results presentation, adding them to `downloads_pilots` closes the gap.
+- **Montería** has documents only up to the co-creation stage, so results (L3) cannot be assessed. The workbook says so with degree NA, and the extractor returns `no_evidence`.
+- **Pilot type.** For Sustainability Corridors the extractor says `methodology` and the workbook says `urban`. The team decides.
+- **Degrees** still sit one step below the workbook. Of 26 workbook "high", the model gave 7 high and 19 medium. Some of its reasons are real weaknesses the documents show (Geothermal L1.4: staff did not take part, and there was no co-creation). Others still reflect what was not documented. Rule 6 now gives anchors for high, medium and low and says that `medium` is not a way to express uncertainty.
+
+Changes after run 2:
+
+- **Compare scoring.** Cells the evaluator left blank are no longer scored; the extractor's answers there are counted separately (`model_adds_where_gold_blank`). A workbook degree NA counts as "not graded", the same answer as the extractor's `no_evidence` / `not_applicable`.
+- **Degree evidence.** A degree with no quotes of its own is not flagged when its justification has evidence.
+
 ### 5c. Comparison (`stage5_compare.py`)
 
 `out/calibration.xlsx` compares, per field:

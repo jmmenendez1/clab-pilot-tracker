@@ -352,6 +352,11 @@ def extract_pilot(pid, model, catalog, out, budget, dry_run, mock_run=False):
             result["cost_items"].append(c)
     if dry_run:
         return result
+    # A degree rests on its justification: the quotes go there, so the degree may carry none of its own.
+    just = {r["dimension"]: r for r in result["responses"] if r["field"] == "justification" and r["hypothesis_index"] is None}
+    for r in result["responses"]:
+        if r["field"] == "degree" and "filled without evidence" in r["flags"] and just.get(r["dimension"], {}).get("evidence"):
+            r["flags"].remove("filled without evidence")
     pt = result["pilot"].get("pilot_type", {})
     for r in result["responses"]:  # dimensions that do not apply to the pilot type
         ap = dims[r["dimension"]]["applies_to"]

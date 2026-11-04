@@ -64,8 +64,15 @@ def main():
             G, M = gr.get(key), mr.get(key)
             g_st = G["status"] if G else "empty"
             m_st = M["status"] if M else "not_requested"
-            row = {"pilot_id": pid, "dimension": key[0], "field": key[1], "gold_status": g_st, "model_status": m_st,
-                   "status_agree": (g_st == "filled") == (m_st == "filled"),
+            # "Not graded" is the same answer on both sides: the workbook writes degree NA (with a justification that
+            # explains why), the extractor returns no_evidence / not_applicable. Fields the evaluator left blank
+            # ("empty") are not scored: there is nothing to agree with.
+            g_ungraded = (gr.get((key[0], "degree")) or {}).get("value") == "na" and key[1] in ("degree", "justification")
+            g_side = "not_filled" if g_ungraded else ("filled" if g_st == "filled" else "not_filled")
+            m_side = "filled" if m_st == "filled" else "not_filled"
+            row = {"pilot_id": pid, "dimension": key[0], "field": key[1], "gold_status": g_st + (" (degree NA)" if g_ungraded else ""),
+                   "model_status": m_st,
+                   "status_agree": None if g_st == "empty" else g_side == m_side,
                    "gold_value": G["value"] if G else None, "model_value": M["value"] if M else None,
                    "model_confidence": M.get("confidence") if M else None, "model_note": M.get("note") if M else None,
                    "model_flags": "; ".join(M.get("flags", [])) if M else None, "model_evidence": ev_text(M) if M else None}
@@ -102,10 +109,11 @@ def main():
         deg = pf[pf.field == "degree"] if len(pf) else pf
         summary.append({
             "pilot_id": pid, "source_workbook": g["source"], "fields_compared": len(pf),
-            "status_agreement": round(pf.status_agree.mean(), 2) if len(pf) else None,
+            "status_agreement": round(pf.status_agree.dropna().astype(bool).mean(), 2) if len(pf) else None,
             "gold_filled": int((pf.gold_status == "filled").sum()), "model_filled": int((pf.model_status == "filled").sum()),
             "gap_only_in_model": int(((pf.gold_status == "filled") & (pf.model_status != "filled")).sum()),
-            "filled_only_in_model": int(((pf.gold_status != "filled") & (pf.model_status == "filled")).sum()),
+            "filled_only_in_model": int((pf.gold_status.str.startswith("no_evidence") | pf.gold_status.str.contains("degree NA")).mul(pf.model_status == "filled").sum()),
+            "model_adds_where_gold_blank": int(((pf.gold_status == "empty") & (pf.model_status == "filled")).sum()),
             "degree_exact": round(deg.degree_exact.mean(), 2) if "degree_exact" in deg and deg.degree_exact.notna().any() else None,
             "degree_within_1": round(deg.degree_within_1.mean(), 2) if "degree_within_1" in deg and deg.degree_within_1.notna().any() else None,
             "hypotheses_gold": len(gh), "hypotheses_model": len(mh),
@@ -116,6 +124,7 @@ def main():
     if not summary:
         raise SystemExit("nothing to compare: run stage5_gold_workbooks.py and stage5_extract.py --gold-only first")
     F = pd.DataFrame(fields)
+    F["status_agree"] = F.status_agree.astype("float")  # None (gold blank) -> NaN, left out of the means
     BD = F.groupby("dimension").agg(fields=("field", "size"), status_agreement=("status_agree", "mean"),
                                     gap_only_in_model=("gold_status", lambda s: int(((s == "filled") & (F.loc[s.index, "model_status"] != "filled")).sum())),
                                     filled_only_in_model=("gold_status", lambda s: int(((s != "filled") & (F.loc[s.index, "model_status"] == "filled")).sum())))
@@ -124,7 +133,7 @@ def main():
     BD = BD.round(2).reset_index()
     readme = pd.DataFrame({"README": [
         "calibration.xlsx — stage 5c: extractor (stage 5b) vs hand-made workbook evaluations (stage 5a), same pilots.",
-        "Summary: per pilot. status_agreement = share of fields where both filled or both left a gap. gap_only_in_model = the evaluator filled it, the extractor did not.",
+        "Summary: per pilot. status_agreement = share of fields where both filled or both left a gap, over the fields the evaluator answered (blank workbook cells are not scored; the extractor's answers there are counted in model_adds_where_gold_blank). A workbook degree NA counts as 'not graded', the same answer as the extractor's no_evidence / not_applicable, for the degree and its justification. gap_only_in_model = the evaluator filled it, the extractor did not.",
         "ByDimension: the same, per framework dimension across pilots; degree_exact / degree_within_1 for graded dimensions.",
         "Fields: one row per field with both values, the extractor's evidence (verbatim quotes, [NOT VERIFIED] if a quote was not found) and its note on gaps. Use `review` to say which side is right (gold / model / both / neither).",
         "Hypotheses, Costs, Cover: side by side, for review.",
