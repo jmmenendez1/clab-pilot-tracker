@@ -11,12 +11,15 @@ How
       types, enum options, applies_to). Changing the catalog changes the extraction; no code change.
     - Four calls per pilot: (1) cover + Level 1, (2) Level 2 (with cost line items), (3) Level 3 (with impact
       hypotheses), (4) Level 4. The system prompt = prompts/extract_system.md + the pilot's corpus.md, prompt-cached,
-      so calls 2-4 read the corpus from cache. Answers are JSON constrained by a schema (structured outputs).
+      so calls 2-4 read the corpus from cache. Answers are JSON constrained by one schema shared by the four calls
+      (structured outputs; a schema that changed per call would break the cache), with dimension codes and field
+      keys as enums.
     - Corpora above --budget tokens are packed: documents in knowledge-base order (final reports first) until the
       budget; the next document is cut and the rest are omitted. Omitted documents are listed in the output and
       in the corpus itself, so gaps can be traced to the cut.
     - Checks in code after each answer:
-        * every requested (dimension, field) is present; missing ones become no_evidence, flagged `missing_in_answer`;
+        * every requested (dimension, field) is present; missing ones become no_evidence, flagged "not returned by the
+          extractor" and counted in checks.not_returned (labels like `L1.1 Relevance` are normalised to `L1.1` first);
         * enum values (degree, on_time, attribution_method, opex.period, pilot_type) and dates are validated;
         * every evidence quote is searched in the cited document (case/whitespace-insensitive); if found in another
           document the doc_id is corrected; quotes not found are flagged and the field's status is kept but marked
@@ -142,9 +145,15 @@ def checklist(level, catalog):
         fields = [f for f in dim_fields(dim, catalog) if f["key"] != "notes"]
         if dim.get("repeatable") == "hypothesis":
             hyp_keys = [f["key"] for f in fields]
-            lines.append("Return these in `hypotheses`: one item per impact hypothesis the documents state or clearly imply "
-                         "(at most 4), each with one entry per field below (dimension `L3.2`). If the documents state no "
-                         "hypothesis or expected impact at all, return an empty list and explain in a `fields` entry "
+            lines.append("Return these in `hypotheses`, not in `fields`: one item per expected effect, each with one entry "
+                         "per field below (dimension `L3.2`). A hypothesis is one testable claim about one effect, measurable "
+                         "with one indicator: split a compound objective (\"improves comfort, reduces energy use and is "
+                         "accepted\") into separate hypotheses. The pilot's stated objectives, expected results and planned "
+                         "indicators count as hypotheses even when the documents never use that word: restate each as a "
+                         "testable claim, cite the passage and say in `note` that it was reconstructed from the objective. "
+                         "Look for effects on the urban or environmental outcome, on users' behaviour or perception, and on "
+                         "institutional capacity or adoption. Usually 2 to 4 (at most 4). Return an empty list only if the "
+                         "documents state no objective or expected effect at all, and then explain in a `fields` entry "
                          "(dimension `L3.2`, field `hypothesis`, status no_evidence).")
             lines += [field_line(f) for f in fields]
             continue
@@ -159,16 +168,36 @@ def checklist(level, catalog):
     return "\n".join(lines), pairs, hyp_keys
 
 
-def schema_for(level, has_hyp):
-    props = {"fields": {"type": "array", "items": FIELD}}
-    req = ["fields"]
-    if level == 2:
-        props["cost_items"] = {"type": "array", "items": COST}
-        req.append("cost_items")
-    if has_hyp:
-        props["hypotheses"] = {"type": "array", "items": HYP}
-        req.append("hypotheses")
-    return {"type": "object", "properties": props, "required": req}
+def build_schema(catalog):
+    """One schema for all four levels, with the valid dimension codes and field keys as enums.
+
+    Why one schema: the prompt cache covers output_config.format, so a schema that changes between levels makes
+    every call rewrite the corpus to the cache instead of reading it (seen in the first calibration run:
+    1.27M tokens written, 0.42M read). Why enums: in that run the model sometimes wrote `L1.1 Relevance` instead of
+    `L1.1`, and those answers were lost as "not returned". Arrays a level does not ask for come back empty."""
+    codes = ["COVER"] + [d["code"] for d in catalog["dimensions"]]
+    keys = [k for k, _, _ in COVER_FIELDS]
+    for d in catalog["dimensions"]:
+        for f in dim_fields(d, catalog):
+            if f["key"] != "notes" and f["key"] not in keys:
+                keys.append(f["key"])
+    field = {**FIELD, "properties": {**FIELD["properties"], "dimension": {"type": "string", "enum": codes},
+                                      "field": {"type": "string", "enum": keys}}}
+    hyp = {**HYP, "properties": {**HYP["properties"], "fields": {"type": "array", "items": field}}}
+    return {"type": "object", "properties": {"fields": {"type": "array", "items": field},
+                                             "cost_items": {"type": "array", "items": COST},
+                                             "hypotheses": {"type": "array", "items": hyp}},
+            "required": ["fields", "cost_items", "hypotheses"]}
+
+
+def norm_dim(s):
+    """Safety net for labels such as `L1.1 Relevance` or `**L1.1**`."""
+    m = re.search(r"COVER|L\d\.\d", str(s or ""), re.I)
+    return m.group(0).upper() if m else s
+
+
+def norm_key(s):
+    return re.sub(r"[`*\s]", "", str(s or "")).lower()
 
 
 # ------------------------------------------------------------------------------------------------ corpus
@@ -244,6 +273,8 @@ def validate(entry, ftype, options, doc_text):
     if entry["evidence"] and not all(e["verified"] for e in entry["evidence"]):
         flags.append("unverified quote")
     entry["confidence"] = min(1.0, max(0.0, float(entry.get("confidence") or 0)))
+    if entry.get("missing_in_answer"):
+        flags.append("not returned by the extractor")
     entry["flags"] = flags
     return entry
 
@@ -265,8 +296,10 @@ def extract_pilot(pid, model, catalog, out, budget, dry_run, mock_run=False):
               "corpus": cinfo, "pilot": {}, "responses": [], "hypotheses": [], "cost_items": [], "usage": [], "preview": []}
     for level in (1, 2, 3, 4):
         text, pairs, hyp_keys = checklist(level, catalog)
-        user = (f"Evaluate Level {level} of the framework for this pilot. Return one entry per field listed below.\n\n{text}")
-        key = sha(system + user + model.model)
+        user = (f"Evaluate Level {level} of the framework for this pilot. Return one entry in `fields` per field listed "
+                f"below, with `dimension` set to the code (e.g. `L{level}.1`{', or `COVER`' if level == 1 else ''}) and `field` "
+                f"to the key. Leave `cost_items` and `hypotheses` empty unless this level asks for them.\n\n{text}")
+        key = sha(system + user + model.model + json.dumps(build_schema(catalog), sort_keys=True))
         raw_path = raw_dir / f"{pid}_L{level}.json"
         if dry_run:
             result["preview"].append({"level": level, "est_input_tokens": int((len(system) + len(user)) / CHARS_PER_TOKEN),
@@ -278,12 +311,12 @@ def extract_pilot(pid, model, catalog, out, budget, dry_run, mock_run=False):
         else:
             mock = lambda: {"fields": [{"dimension": d, "field": f, "status": "no_evidence", "value": "", "note": "(mock)", "confidence": 0, "evidence": []} for d, f in pairs],
                             "cost_items": [], "hypotheses": []}
-            ans, usage = model.call(system, user, {"input_schema": schema_for(level, hyp_keys is not None)}, mock)
+            ans, usage = model.call(system, user, {"input_schema": build_schema(catalog)}, mock)
             if not model.mock:
                 raw_path.write_text(json.dumps({"key": key, "time": time.strftime("%Y-%m-%d %H:%M"), "answer": ans, "usage": usage}, ensure_ascii=False, indent=1), encoding="utf-8")
         result["usage"].append({"level": level, **usage})
 
-        got = {(e.get("dimension"), e.get("field")): e for e in ans.get("fields", [])}
+        got = {(norm_dim(e.get("dimension")), norm_key(e.get("field"))): e for e in ans.get("fields", [])}
         for d, f in pairs:
             e = got.get((d, f)) or {"dimension": d, "field": f, "status": "no_evidence", "value": "", "confidence": 0, "evidence": [],
                                     "note": "Field not returned by the extractor.", "missing_in_answer": True}
@@ -307,7 +340,7 @@ def extract_pilot(pid, model, catalog, out, budget, dry_run, mock_run=False):
                                             **{k: v for k, v in e.items() if k not in ("dimension", "field")}})
             for i, h in enumerate(ans.get("hypotheses", [])):
                 result["hypotheses"].append({"index": i, "label": h.get("label", f"Impact ({i + 1})")})
-                hg = {x.get("field"): x for x in h.get("fields", [])}
+                hg = {norm_key(x.get("field")): x for x in h.get("fields", [])}
                 for f in hyp_keys:
                     fdef = next(x for x in dim_fields(dims["L3.2"], catalog) if x["key"] == f)
                     e = hg.get(f) or {"status": "no_evidence", "value": "", "confidence": 0, "evidence": [], "note": "Field not returned by the extractor.", "missing_in_answer": True}
@@ -330,6 +363,7 @@ def extract_pilot(pid, model, catalog, out, budget, dry_run, mock_run=False):
         "no_evidence": sum(r["status"] == "no_evidence" for r in result["responses"]),
         "not_applicable": sum(r["status"] == "not_applicable" for r in result["responses"]),
         "with_flags": sum(bool(r["flags"]) for r in result["responses"]),
+        "not_returned": sum(bool(r.get("missing_in_answer")) for r in result["responses"]),
         "quotes": sum(len(r["evidence"]) for r in result["responses"]),
         "quotes_verified": sum(e["verified"] for r in result["responses"] for e in r["evidence"]),
         "hypotheses": len(result["hypotheses"]), "cost_items": len(result["cost_items"]),

@@ -15,6 +15,7 @@ This file records what each stage of the retrospective pipeline does, the parame
 | 2026-11-02 | **Providencia is split out** as its own pilot, *Water Management Pilot Providencia* (`CLAB-P-201`). *Water Consumption Reduction in Buildings* (`CLAB-P-081`) becomes Renca. The documents that cover both communes belong to both pilots. The basis is the HUB process evaluation, which lists Renca and Providencia as separate pilots. | Juan | `data/pilot_splits.csv` → stage 2 |
 | 2026-11-02 | *Urban Tree Detection* and *Urban Oasis Colonia Bethania* stay as validated pilots with no change. Whatever their documents do not cover is recorded as gaps, and the team reviews them later. | Juan | no change; stage 5 fills gaps as `no_evidence` |
 | 2026-11-03 | Stage 3's proposed document moves are **accepted by default**. The team only marks `reject` where a move is wrong. | Juan | `out/document_reassignments.csv` → stage 4 |
+| 2026-11-03 | **Degrees rate what the documents show the pilot did.** A guiding question the documents leave unanswered lowers `confidence` and goes in the note. It does not lower the degree. Only weaknesses the documents show lower it. | Juan | `prompts/extract_system.md` rule 6 |
 | 2026-11-02 | The reviewer of each pilot depends on the pilot (Juan, Eli, Rober, Angie or Toni). It is recorded per pilot, with no fixed assignment. | Juan | `reviewer` column in the registry |
 
 ## 2. Stage 1 — text, duplicates, versions (`stage1_extract.py`)
@@ -230,13 +231,13 @@ This script reads the five workbooks Sabrina completed by hand: Geothermal, Yaku
 - **Checklist.** It is generated from `catalog/framework_catalog.json`: definition, guiding questions, field types, enum options and `applies_to`. "Notes" fields are not requested, because each entry carries its own `note`.
     - The cover asks for: pilot_type, city, country, problem_definition, target_population, lead, counterpart and the two dates.
     - L2.1 asks for cost line items (original amount, currency, year, subcategory, what it covers), plus `opex.period` and `funding_note`. Conversion to USD and totals are left to code, never to the model.
-    - L3.2 asks for at most 4 hypotheses, each with the 10 hypothesis fields.
-- **Calls.** There are four calls per pilot: cover + L1, L2, L3, L4. The system prompt is the instructions plus the pilot's `corpus.md`, prompt-cached, so the corpus is paid once and read three times. Answers are JSON constrained by a schema, and every entry has status, value, note, confidence and evidence (doc_id, location, verbatim quote).
+    - L3.2 asks for up to 4 hypotheses (one testable claim per effect), each with the 10 hypothesis fields.
+- **Calls.** There are four calls per pilot: cover + L1, L2, L3, L4. The system prompt is the instructions plus the pilot's `corpus.md`, prompt-cached, so the corpus is paid once and read three times. Answers are JSON constrained by one schema shared by the four calls (so the cache holds), with dimension codes and field keys as enums, and every entry has status, value, note, confidence and evidence (doc_id, location, verbatim quote).
 - **Reading budget.** `--budget` defaults to 150k tokens. Documents go in knowledge-base order (final reports first). Beyond the budget the next document is cut and the rest are omitted. The corpus itself tells the model what was left out, and the output lists it.
     - Only *Sustainability Corridors* (222k) and *Respira Lima* (178k) exceed the budget.
     - For Sustainability Corridors this means the technical proposal is cut and 6 documents are omitted.
 - **Checks in code:**
-    - every requested field is present; a missing one becomes `no_evidence`, flagged `missing_in_answer`;
+    - every requested field is present; a missing one becomes `no_evidence`, flagged *not returned by the extractor* and counted in `checks.not_returned` (labels such as `L1.1 Relevance` are normalised first);
     - enum values and ISO dates are validated;
     - every quote is searched in the cited document, and the doc_id is corrected if the quote is found in another document; unfound quotes are flagged and never dropped silently;
     - a gap must come with a note;
@@ -246,6 +247,27 @@ This script reads the five workbooks Sabrina completed by hand: Geothermal, Yaku
 - **Stage.** Each response is stored at the last stage where the catalog lists that field (the rule from the plan). Raw answers are cached per pilot and level.
 - **Tested offline.** `tests/test_stage5_offline.py` uses a fake model whose answers include a verbatim quote, an invented quote, an invalid degree, a gap without a note and omitted fields, and checks that each case is detected. `--mock` runs the whole stage and the comparison end to end.
 - **Calibration size (dry run, 2026-11-03).** The 5 pilots send about 294k corpus tokens, each written to the cache once and read three times.
+
+### Calibration run 1 (2026-11-03, Juan's machine) and fixes
+
+The first live run extracted the 5 pilots in 20 calls, with 135 of 139 quotes verified. Agreement with the workbooks on filled vs gap was 0.68 (Geothermal), 0.68 (Yaku), 0.64 (Last Mile), 0.25 (Montería) and 0.25 (Sustainability Corridors). The review found four causes.
+
+1. **Dimension labels (bug).** For Montería and Sustainability Corridors the model wrote `L1.1 Relevance` instead of `L1.1` in Levels 1 and 4. Code looked the answers up by the exact code, so 19 answered fields were stored as "not returned". The check counted them as gaps but did not flag them, so the summary did not show it. Fixes:
+    - the schema now restricts `dimension` and `field` to the valid codes and keys (enums);
+    - code normalises labels as a safety net;
+    - a field not returned is flagged and counted in `checks.not_returned`.
+
+   Replaying run 1's answers through the fixed code, without new calls, raises agreement to 0.86, 0.86, 0.64, 0.64 and 0.86.
+2. **Prompt cache (cost).** 1.27M tokens were written to the cache and only 0.42M read. The schema changed between levels, and the prompt cache covers `output_config.format` ([structured outputs docs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs): *"Changing the output_config.format parameter will invalidate any prompt cache"*). The four calls now share one schema, and levels that do not ask for costs or hypotheses return those arrays empty.
+3. **Hypotheses.** The workbooks have 3 hypotheses per pilot. The model returned one compound hypothesis (four pilots) or none (Last Mile, where it read the GHG objective as "no hypothesis beyond the stated objective"). The L3.2 instruction now asks for:
+    - one testable claim per effect, with compound objectives split;
+    - stated objectives and planned indicators restated as hypotheses and marked as reconstructed;
+    - a search across urban or environmental, behavioural and institutional effects, usually 2 to 4.
+4. **Degrees and evaluative fields.** On the 33 degrees both sides graded, the model never rated above the workbook: of 21 workbook "high", it gave 3 high, 17 medium and 1 low. The model lowered degrees for unanswered guiding questions, and returned `no_evidence` when no document carried out the evaluation itself (L1.5 regulations in 4 of 5 pilots, some L4 lessons). Two new rules address this:
+    - rule 3: judge from the facts reported, and do not wait for a document that states the judgment;
+    - rule 6: unanswered questions lower confidence, not the degree (decision 2026-11-03).
+
+The workbooks may also draw on knowledge the documents lack. In Last Mile, the workbook states that the Cities LAB did not deploy the vehicles. Remaining differences go to the `review` column.
 
 ### 5c. Comparison (`stage5_compare.py`)
 
