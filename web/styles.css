@@ -183,3 +183,17 @@ table.summary td.who { font-size: 12px; }
   .sheet { border: 0; padding: 0; }
   table, tr { page-break-inside: avoid; }
 }
+
+/* ---------- retrospective extraction drafts and evaluability ---------- */
+.badge.draft { background: #e9e3f7; color: #5a3f9e; }
+.frow.draft { background: #f7f4fd; margin: 0 -10px; padding-left: 10px; padding-right: 10px; border-radius: 6px; }
+.frow .meta .confirm-draft { margin-left: 8px; }
+.frow .meta .flag { color: var(--amber); }
+details.evidence { margin-top: 6px; }
+details.evidence summary { cursor: pointer; color: var(--blue); }
+details.evidence ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink); font-size: 12.5px; }
+details.evidence li { margin-bottom: 4px; }
+.banner.draft-banner { background: #f3effc; border: 1px solid #ddd3f3; color: var(--ink); }
+.evgrid { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+.evgrid span { font-size: 11px; padding: 1px 5px; border-radius: 4px; background: #eceae3; color: var(--muted); font-family: ui-monospace, monospace; }
+.evgrid span.ok { background: var(--green-soft); color: var(--ok); }

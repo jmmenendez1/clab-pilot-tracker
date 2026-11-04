@@ -8,19 +8,22 @@ What each stage does and why, the parameters, the validation results and the tea
 |---|---|---|---|---|
 | 1 | `stage1_extract.py` | `downloads_pilots/` | full text per document, duplicates and versions (`out/documents.csv`, `out/text/`) | done |
 | 2 | `stage2_registry.py` | repository workbook (Review / Notes) + stage 1 | `out/pilot_registry.xlsx` | done; awaiting team review |
-| 3 | `stage3_screen_unreviewed.py` | stage 2 + Anthropic API | `out/screening_unreviewed.xlsx`, `out/document_reassignments.csv` | ready to run |
-| 4 | knowledge base per pilot | stages 2–3 after team review | `out/kb/<pilot_id>/` | next |
-| 5 | framework extraction | stage 4 + catalog | one JSON per pilot | planned |
-| 6 | loader into the tracker | stage 5 | rows in Supabase | planned |
+| 3 | `stage3_screen_unreviewed.py` | stage 2 + Anthropic API | `out/screening_unreviewed.xlsx`, `out/document_reassignments.csv` | done (2026-11-03) |
+| 4 | `stage4_knowledge_base.py` | stages 2–3 (+ team rejections) | `out/kb/<pilot_id>/manifest.json`, `corpus.md`, `out/kb/kb_summary.csv` | done (2026-11-03) |
+| 5a | `stage5_gold_workbooks.py` | hand-made evaluation workbooks | `out/gold/<pilot_id>.json` | done (2026-11-03) |
+| 5b | `stage5_extract.py` | stage 4 + catalog + Anthropic API | `out/extraction/<pilot_id>.json` | done (29 pilots, 2026-11-04) |
+| 5c | `stage5_compare.py` | 5a + 5b | `out/calibration.xlsx` | done (2 calibration runs) |
+| 5d | `evaluability.py` | stage 5b (+ 5a) | `out/evaluability.csv`: completeness score per pilot (retrospective baseline) | done (2026-11-04) |
+| 6 | `stage6_load_sql.py` | stage 5 + `evaluability.py` | `out/load/load_NN.sql` for the Supabase SQL editor, `out/load/load_preview.csv` | ready (tested on PostgreSQL 16) |
 
 ## Setup (Windows, once)
 
 ```powershell
 cd retro
-python -m venv .venv
-.venv\Scripts\activate
 pip install -r requirements.txt
 ```
+
+A virtual environment is optional. If you want one, create it once with `python -m venv .venv` and activate it in each new window with `.venv\Scripts\activate`; without it, the packages go into your main Python and no activation step is needed.
 
 - **OCR is optional.** Scanned PDF pages are read with Tesseract (languages `spa`, `por`, `eng`). Without it, those pages come out empty and `documents.csv` reports them. To skip OCR altogether, unzip the shared `text_cache.zip` into `out/` before stage 1: stage 1 reuses every text it finds there.
 - **Long paths are handled.** Stage 1 adds the `\\?\` prefix on Windows, because OneDrive paths exceed the 260-character limit.
@@ -45,7 +48,25 @@ python stage2_registry.py --repo "<path>\clab_pilot_repository.xlsx" --stage1 ou
 python stage3_screen_unreviewed.py --out out --dry-run     # what would be sent, token estimate, no API call
 python stage3_screen_unreviewed.py --out out --limit 5     # try 5 documents
 python stage3_screen_unreviewed.py --out out               # full run; re-running resumes and only calls what changed
+
+# Stage 4 - one knowledge base per validated pilot (no API calls, seconds)
+python stage4_knowledge_base.py --out out
+
+# Stage 5 - calibration on the 5 hand-made workbooks, then all pilots
+python stage5_gold_workbooks.py --out out --workbooks gold_workbooks   # workbooks -> out/gold/
+python stage5_extract.py --out out --gold-only --dry-run                # token estimate, no API call
+python stage5_extract.py --out out --gold-only                          # extract the 5 calibration pilots
+python stage5_compare.py --out out                                      # -> out/calibration.xlsx
+python stage5_extract.py --out out                                      # all pilots, after the prompts are tuned
+python evaluability.py --out out                                         # -> out/evaluability.csv (completeness score)
+
+# Stage 6 - SQL scripts that load the drafts into the tracker (run db/migrations/002_retro_provenance.sql first)
+python stage6_load_sql.py --out out --author-email you@iadb.org        # -> out/load/load_01.sql ... + load_preview.csv
 ```
+
+Tests for stage 6 and evaluability: `tests/test_stage6_postgres.py` (end to end on a throwaway PostgreSQL) and `tests/test_evaluability_parity.py` (Python and the tracker's JavaScript give the same score).
+
+Offline tests (no key needed): `python tests/test_stage3_api_shape.py` (API request shape) and `python tests/test_stage5_offline.py out CLAB-P-083` (stage-5 checks). `tests/test_gold_parity.py` checks the Python workbook importer against the tracker's JS importer (needs Node).
 
 Every stage can be re-run safely. Stage 1 reuses extracted text. Stage 3 keeps its API answers in `out/screening/` and only repeats a call when the document, the prompt or the model changes.
 
@@ -54,9 +75,10 @@ Every stage can be re-run safely. Stage 1 reuses extracted text. Stage 3 keeps i
 | File | Purpose |
 |---|---|
 | Repository workbook, columns *Review* / *Notes* | Binding decisions: ✓, redundant → target, never happened, not started, ongoing. Stage 2 parses them. |
-| `data/team_decisions_overrides.csv` | Corrections where the parser misread a note. One row per entry, with a `comment` explaining why. |
+| `data/team_decisions_overrides.csv` | Corrections where the parser misread a note, and decisions taken after the repository was reviewed. One row per entry, with a `comment` explaining why. |
+| `data/pilot_splits.csv` | One repository entry that is really two pilots, e.g. Renca and Providencia. |
 | `out/pilot_registry.xlsx` → `final_decision`, `reviewer` | Decisions on the duplicate candidates. |
-| `out/screening_unreviewed.xlsx` → `team_decision` | Accept or reject each proposed document move. |
+| `out/document_reassignments.csv` → `team_decision` | Proposed document moves from stage 3. **Empty = accepted** (decision 2026-11-03); write `reject` to exclude one. Re-running stage 3 keeps these decisions. |
 
 ## Data policy
 

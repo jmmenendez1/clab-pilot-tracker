@@ -183,6 +183,7 @@ def main():
     ap.add_argument("--stage1", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--overrides", default=str(Path(__file__).parent / "data" / "team_decisions_overrides.csv"))
+    ap.add_argument("--splits", default=str(Path(__file__).parent / "data" / "pilot_splits.csv"))
     a = ap.parse_args()
     s1, out = Path(a.stage1), Path(a.out)
 
@@ -331,6 +332,24 @@ def main():
     # Unreviewed entries are screened (stage 3) only to recover documents that belong to validated pilots.
     R["in_retro_scope"] = R.status.eq("confirmed")
 
+    # Splits (data/pilot_splits.csv): one repository entry that the team decided is really two pilots.
+    # The new pilot copies the source's status and TCs; with documents = "all" it shares every document of the
+    # source (documents that cover both pilots belong to both knowledge bases). pilot_id >= CLAB-P-201 marks
+    # pilots that have no row of their own in the repository.
+    R["split_from"] = ""
+    splits = pd.read_csv(a.splits, dtype=str).fillna("") if Path(a.splits).exists() else pd.DataFrame()
+    for sp in splits.itertuples():
+        src_pid = pid[survivor[sp.source_entry]]
+        src = R[R.pilot_id == src_pid].iloc[0].copy()
+        if sp.source_cities:
+            R.loc[R.pilot_id == src_pid, "cities"] = sp.source_cities
+            R.loc[R.pilot_id == src_pid, "metadata_fix"] = (str(src.metadata_fix) + " | split: cities=" + sp.source_cities).strip(" |")
+        new = src.copy()
+        new.update({"pilot_id": sp.new_pilot_id, "survivor_entry": f"{sp.source_entry}#split", "canonical_name": sp.name,
+                    "cities": sp.cities, "merged_rows": "", "aliases": "", "candidate_matches": "", "auto_proposal": "",
+                    "team_review": "split by team", "team_notes": sp.comment, "metadata_fix": "", "split_from": src_pid})
+        R = pd.concat([R, new.to_frame().T], ignore_index=True)
+
     # ------------------------------------------------------------------ candidates for the unreviewed entities
     status_by_entry = {}
     for _, r in R.iterrows():
@@ -381,6 +400,12 @@ def main():
     D.to_csv(out / "team_decisions.csv", index=False, encoding="utf-8-sig")
     docs_out = docs.copy()
     docs_out["pilot_id"] = docs_out.entry_id.map(lambda x: pid[survivor[x]])
+    for sp in splits.itertuples():
+        if sp.documents.strip().lower() == "all":
+            extra = docs_out[docs_out.pilot_id == pid[survivor[sp.source_entry]]].copy()
+            extra["pilot_id"] = sp.new_pilot_id
+            extra["folder_mapping"] = "shared via split of " + sp.source_entry
+            docs_out = pd.concat([docs_out, extra], ignore_index=True)
     docs_out = docs_out[["pilot_id", "entry_id", "folder_mapping", "tc", "folder", "original_name", "role", "ext", "units", "chars", "ocr_pages",
                          "is_representative", "relation_to_representative", "cluster_id", "cluster_locations", "use_for_extraction", "rel_path", "doc_id"]]
     R = R.sort_values(["status", "tc_primary", "canonical_name"], key=lambda s: s.map({"to_review": 0, "doubtful_files": 1, "confirmed": 2, "ongoing": 3, "not_started": 4, "umbrella_not_a_pilot": 5, "never_happened": 6}).fillna(s) if s.name == "status" else s)

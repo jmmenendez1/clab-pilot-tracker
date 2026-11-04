@@ -2,7 +2,7 @@
 
 Why
     The retrospective evaluation covers only the pilots the team validated (Review = ✓). The other entries in the
-    repository ("?", the doubtful entry and the two umbrella entries) are not evaluated, but their folders may hold
+    repository ("?", the doubtful entry and the HUB-level entries of RG-T4182) are not evaluated, but their folders may hold
     documents that belong to a validated pilot (misfiled reports, programme reports with a section per pilot).
     This stage finds those documents so they can be moved into the right pilot's knowledge base.
     It does NOT try to decide whether an unvalidated entry is a pilot of its own.
@@ -12,7 +12,7 @@ How
        excerpts of its own documents. Profiles are cached in <out>/screening/profiles.json.
     2. Screening: one API call per distinct document filed under an unvalidated entry. The system prompt holds the
        catalog of validated-pilot profiles (prompt-cached across calls); the user turn holds the document text with
-       page/slide/block markers. Claude answers through a forced tool call (structured JSON): verdict, matched
+       page/slide/block markers. Claude answers in JSON constrained by a schema (structured outputs): verdict, matched
        pilots, verbatim evidence quote and its location.
     3. Verification: every evidence quote is checked against the document's full text (whitespace/case-insensitive).
        Unverified quotes are flagged, never silently accepted.
@@ -168,11 +168,28 @@ def est_tokens(chars):
 
 
 # ------------------------------------------------------------------------------------------------ model access
-class Model:
-    """Thin wrapper around the Anthropic Messages API with a forced tool call; --mock replaces the network call."""
+def strict_schema(schema):
+    """Adapt a JSON schema to structured outputs: every object gets additionalProperties=false, and the
+    unsupported constraints (minimum, maximum, maxItems, minLength, maxLength) are dropped. Ranges stay
+    documented in the prompts and are re-checked in code (confidence is clamped to 0-1)."""
+    if isinstance(schema, dict):
+        out = {k: strict_schema(v) for k, v in schema.items() if k not in ("minimum", "maximum", "maxItems", "minLength", "maxLength")}
+        if out.get("type") == "object":
+            out["additionalProperties"] = False
+        return out
+    if isinstance(schema, list):
+        return [strict_schema(x) for x in schema]
+    return schema
 
-    def __init__(self, model, mock=False, max_tokens=1500):
-        self.model, self.mock, self.max_tokens = model, mock, max_tokens
+
+class Model:
+    """Thin wrapper around the Anthropic Messages API returning JSON through structured outputs
+    (output_config.format = json_schema). Claude Sonnet 5.5 rejects forced tool calls (tool_choice "tool"/"any"),
+    so the schema is enforced with structured outputs instead. --mock replaces the network call."""
+
+    def __init__(self, model, mock=False, max_tokens=16000, effort="medium"):
+        # max_tokens covers adaptive thinking (on by default in Sonnet 5.5) plus the JSON answer
+        self.model, self.mock, self.max_tokens, self.effort = model, mock, max_tokens, effort
         self.usage = {"calls": 0, "input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
         self.lock = threading.Lock()
         if not mock:
@@ -184,15 +201,28 @@ class Model:
     def call(self, system, user, tool, mock_fn=None):
         if self.mock:
             return mock_fn(), {}
-        resp = self.client.messages.create(
+        output_config = {"format": {"type": "json_schema", "schema": strict_schema(tool["input_schema"])}}
+        if self.effort:
+            output_config["effort"] = self.effort
+        # Streamed: the SDK refuses non-streaming requests whose max_tokens could take over 10 minutes
+        # (stage 5 uses 32k), and a stream also keeps the connection alive on slow networks.
+        with self.client.messages.stream(
             model=self.model,
             max_tokens=self.max_tokens,
             system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-            tools=[tool],
-            tool_choice={"type": "tool", "name": tool["name"]},
+            output_config=output_config,
             messages=[{"role": "user", "content": user}],
-        )
-        out = next(b.input for b in resp.content if b.type == "tool_use")
+        ) as stream:
+            resp = stream.get_final_message()
+        if resp.stop_reason == "refusal":
+            raise RuntimeError(f"model refused (request {getattr(resp, '_request_id', '')})")
+        if resp.stop_reason == "max_tokens":
+            raise RuntimeError("answer cut at max_tokens; raise --max-tokens")
+        text = "".join(b.text for b in resp.content if b.type == "text")
+        out = json.loads(text)
+        for m in out.get("matches", []):
+            if isinstance(m.get("confidence"), (int, float)):
+                m["confidence"] = min(1.0, max(0.0, float(m["confidence"])))
         u = resp.usage
         usage = {k: getattr(u, k, 0) or 0 for k in self.usage if k != "calls"}
         with self.lock:
@@ -237,10 +267,24 @@ def build_profiles(model, R, D, text_dir, out_dir, profile_chars, docs_per_pilot
                             "aliases": r.aliases if isinstance(r.aliases, str) else "", "parent_pilot": r.parent_pilot if isinstance(r.parent_pilot, str) else "",
                             "n_docs_used": n, **res, "usage": usage}
 
+    def safe(job):
+        try:
+            return run(job)
+        except Exception as e:  # one failed pilot must not stop the others; it is retried on the next run
+            print(f"  ! profile {job[0].pilot_id} failed: {e}", flush=True)
+            return job[0].pilot_id, None
+
+    failed = []
     with ThreadPoolExecutor(4) as ex:
-        for pid, prof in ex.map(run, jobs):
-            cache[pid] = prof
+        for pid, prof in ex.map(safe, jobs):
+            if prof is None:
+                failed.append(pid)
+            else:
+                cache[pid] = prof
     path.write_text(json.dumps(cache, ensure_ascii=False, indent=1), encoding="utf-8")
+    if failed:
+        sys.exit(f"{len(failed)} profiles failed ({', '.join(failed)}); fix the error above and re-run. "
+                 "Screening needs the complete catalog; the profiles already built are cached.")
     return cache, []
 
 
@@ -328,10 +372,22 @@ def screen(model, R, D, profiles, text_dir, out_dir, max_chars, workers, limit, 
         return rec
 
     results = []
+    # Warm the prompt cache with one call before going parallel: otherwise every worker that starts at the same
+    # time writes the ~15k-token catalog to the cache (first live run: 4 of 5 calls paid the cache write).
+    pending = [j for j in jobs if j["key"] not in done]
+    if pending and not model.mock:
+        try:
+            results.append(run(pending[0]))
+        except Exception as e:
+            print(f"  ! a document failed: {e}", flush=True)
+        jobs = [j for j in jobs if j is not pending[0]]
     with ThreadPoolExecutor(workers) as ex:
         futs = [ex.submit(run, j) for j in jobs]
         for k, fu in enumerate(as_completed(futs), 1):
-            results.append(fu.result())
+            try:
+                results.append(fu.result())
+            except Exception as e:  # not cached, so the next run retries it
+                print(f"  ! a document failed: {e}", flush=True)
             if k % 10 == 0 or k == len(futs):
                 print(f"  screened {k}/{len(futs)}", flush=True)
     return results, []
@@ -419,6 +475,8 @@ def main():
     ap.add_argument("--profile-chars", type=int, default=6000, help="text per document when building a profile")
     ap.add_argument("--profile-docs", type=int, default=3, help="documents per validated pilot used for its profile")
     ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--effort", default="medium", choices=["low", "medium", "high"], help="thinking effort (Sonnet 5.5 thinks adaptively by default)")
+    ap.add_argument("--max-tokens", type=int, default=16000, help="per call; covers thinking + JSON answer")
     ap.add_argument("--limit", type=int, default=0, help="screen only the first N documents (0 = all)")
     ap.add_argument("--dry-run", action="store_true", help="build requests and estimate tokens; no API calls")
     ap.add_argument("--mock", action="store_true", help="offline test: fake model answers, nothing is cached")
@@ -429,7 +487,7 @@ def main():
     sdir.mkdir(parents=True, exist_ok=True)
     R = pd.read_excel(out / "pilot_registry.xlsx", sheet_name="Registry")
     D = pd.read_excel(out / "pilot_registry.xlsx", sheet_name="Documents", dtype={"doc_id": str, "cluster_id": str})
-    model = Model(a.model, mock=a.mock or a.dry_run)
+    model = Model(a.model, mock=a.mock or a.dry_run, max_tokens=a.max_tokens, effort=a.effort)
     t0 = time.time()
 
     print(f"[1/3] profiles of {R.status.isin(VALIDATED_STATUSES).sum()} validated pilots")
@@ -454,6 +512,14 @@ def main():
 
     print("[3/3] verifying quotes and aggregating")
     E, B, M = aggregate(results, R)
+    # The team records its decisions in out/document_reassignments.csv (column team_decision: empty = accept by
+    # default, "reject" = exclude). A re-run must never erase them: carry them over by (document, source, target).
+    sfx = "_mock" if a.mock else ""  # a mock run never touches the real outputs or the team decisions
+    dec_path = out / f"document_reassignments{sfx}.csv"
+    if dec_path.exists() and len(M):
+        old = pd.read_csv(dec_path, dtype=str).fillna("")
+        prev = {(r.cluster_id, r.from_entry, r.to_pilot): r.team_decision for r in old.itertuples()}
+        M["team_decision"] = [prev.get((c, f, t), "") for c, f, t in zip(M.cluster_id, M.from_entry, M.to_pilot)]
     Pf = pd.DataFrame([{"pilot_id": k, "name": v["name"], "tcs": v["tcs"], "cities": v["cities"], "summary": v["summary"],
                         "key_terms": ", ".join(v["key_terms"]), "period": v["period"], "docs_used": v.get("n_docs_used", "")}
                        for k, v in sorted(profiles.items())])
@@ -469,11 +535,11 @@ def main():
         "Scope (team decision 2026-11-02): only validated pilots are evaluated; this screening only recovers their misfiled documents.",
         "ByEntity: one row per unvalidated entry with the proposal. Fill team_decision.",
         "ByDocument: the model's verdict per document with the verbatim evidence; [NOT FOUND IN TEXT] marks quotes that failed verification.",
-        "Reassignments: proposed moves (primary/section matches only). Fill team_decision (accept / reject); the knowledge base (stage 4) applies the accepted ones.",
+        "Reassignments: proposed moves (primary/section matches only). Team decisions live in out/document_reassignments.csv (team_decision: empty = accepted by default, 'reject' = excluded); re-runs keep them. Stage 4 applies them.",
         "Profiles: the catalog of validated pilots the model compared against (built from each pilot's own documents).",
         "Run: model, prompt versions, token usage. Raw answers: screening/responses.jsonl.",
     ]})
-    xlsx = out / "screening_unreviewed.xlsx"
+    xlsx = out / f"screening_unreviewed{sfx}.xlsx"
     with pd.ExcelWriter(xlsx, engine="openpyxl") as w:
         readme.to_excel(w, sheet_name="README", index=False)
         E.to_excel(w, sheet_name="ByEntity", index=False)
@@ -482,7 +548,7 @@ def main():
         Pf.to_excel(w, sheet_name="Profiles", index=False)
         run.to_excel(w, sheet_name="Run", index=False)
     style(xlsx)
-    M.to_csv(out / "document_reassignments.csv", index=False, encoding="utf-8-sig")
+    M.to_csv(dec_path, index=False, encoding="utf-8-sig")
     print(f"done: {len(results)} documents, {int((E.documents_matched > 0).sum()) if len(E) else 0} entries with documents of validated pilots, "
           f"{len(M)} proposed moves -> {xlsx}")
     print("usage:", model.usage)
